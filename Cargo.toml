@@ -1,0 +1,18 @@
+[package]
+name = "rop-compiler"
+version = "0.0.1"
+authors = ["Emil Masoumi"]
+
+[[bin]]
+name = "ropc"
+path = "src/main.rs"
+
+[dependencies]
+capstone = "0.8.0"
+clap = "2.33.3"
+
+[profile.release]
+# Link time optimization
+lto = true
+# Reduce parallel code generation units
+codegen-units = 1

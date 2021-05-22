@@ -137,7 +137,7 @@ fn read_bytes(bin : &String) -> Vec<u8> {
       return bytes;
     }
     Err(e) => {
-      error!("failed reading from \'", bin, "\': ", e);
+      error!("failed reading from: \'", bin, "\': ", e);
     }
   }
 }

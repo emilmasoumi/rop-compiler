@@ -6,8 +6,15 @@ Different utility functions.
 
 use clap::{Arg, App};
 
+use lexer::{Pos};
 use codegen::{Arch, ArchSize, AsmSyntax, CPUType, Endianess};
 
+use std::io::prelude::*;
+use std::fs::File;
+
+use std::fmt::Debug;
+
+use self::Pos::*;
 use self::Arch::*;
 use self::ArchSize::*;
 use self::AsmSyntax::*;
@@ -25,7 +32,46 @@ macro_rules! error {
   }}
 }
 
-pub fn is_hex(s: &String) -> bool {
+pub fn err_line(src : &String, id: &String, pos : &Pos) -> String {
+  let (l, c) = match pos {
+    Pos(l, c) => (l, c),
+    _         => error!("get_line(): given Pos is malformed: ", format!("{:?}", pos)),
+  };
+  let l = l - 1;
+  let c = c - 1;
+
+  let split : Vec<_> = src.split("\n").collect();
+  if l > split.len() - 1 {
+    error!("get_line(): index: ", l, " out of bounds.");
+  }
+
+  println!(" {} | {}", l+1, split[l]);
+
+  // ws1 := number of characters in " {} "
+  let ws1  = 2 + (l+1).to_string().len();
+  // ws2 := number of characters in " {}"
+  let ws2  = 1 + c;
+  let note = " ".repeat(ws1) + "|" + &" ".repeat(ws2) + "^" + &"^".repeat(id.len()-1);
+  return note;
+}
+
+pub fn read_file(filename : &String) -> String {
+  let fs = File::open(filename);
+
+  let mut fs = match fs {
+    Ok(file) => file,
+    Err(e)   => error!("failed opening: \'", filename, "\': ", e),
+  };
+
+  let mut str = String::new();
+
+  match fs.read_to_string(&mut str) {
+    Ok(_)  => str,
+    Err(e) => error!("failed reading: \'", filename, "\' into a string: ", e),
+  }
+}
+
+pub fn is_hex(s : &String) -> bool {
   if s.len() > 2 {
     let bytes = s.as_bytes();
     if bytes[0] == b'0' && (bytes[1] == b'x' || bytes[1] == b'X') {
@@ -33,6 +79,13 @@ pub fn is_hex(s: &String) -> bool {
     }
   }
   return s.chars().all(|x| x.is_ascii_hexdigit());
+}
+
+// Note: fmt::Debug: {:?} depicts '\' as '\\\'.
+pub fn pp_vec<T : Debug>(v : &Vec<T>) -> () {
+  for e in v {
+    println!("{:?}", e);
+  }
 }
 
 /*

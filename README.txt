@@ -102,13 +102,12 @@ The assembly must be defined inside two string literals "...", for example:
 string literals must be syntactically correct for the respective machine
 architecture and its correctness is ignored by the parser.
 
-Variables are declared with a `let id;` expression and must be defined when
-referenced and can be defined with `let id = val`. They must be defined when
-referenced and undeclared identifiers inside string literals are treated as
-assembly constructs when referenced. Such construct must hence exist
-in the instruction set architecture of the given Executable and Linkable Format
-(ELF)/Portable Executable (PE) binary. Identifiers shadow the instruction
-sets mnemonics, so the following code:
+Variables are declared with a `let id;` expression and can be defined with
+`let id = val`. They must be defined when referenced and undeclared identifiers
+inside string literals are treated as assembly constructs when referenced.
+Such construct must hence exist in the instruction set architecture of the
+given Executable and Linkable Format (ELF)/Portable Executable (PE) binary.
+Identifiers shadow the instruction sets mnemonics, so the following code:
 
 let rax = "rsi";
 { "mov rax, rax; ret;" };
@@ -144,7 +143,7 @@ it evaluates to the following:
   "add rsp, rsp;", "sub rsp, rsp;", "mul rsp, rsp;", "div rsp, rsp;"
 };
 
-Arrays cannot be implicitly defined inside blocks, meaning that the array
+Arrays cannot implicitly be defined inside blocks, meaning that the array
 expression assigned to the identifier cannot be used instead of referencing the
 respective array. Every possible permutation is mutated when multiple arrays
 are encountered in a block. The following code:

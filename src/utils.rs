@@ -63,10 +63,10 @@ pub fn read_file(filename : &String) -> String {
     Err(e)   => error!("failed opening: \'", filename, "\': ", e),
   };
 
-  let mut str = String::new();
+  let mut s = String::new();
 
-  match fs.read_to_string(&mut str) {
-    Ok(_)  => str,
+  match fs.read_to_string(&mut s) {
+    Ok(_)  => s,
     Err(e) => error!("failed reading: \'", filename, "\' into a string: ", e),
   }
 }

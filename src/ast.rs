@@ -1,51 +1,48 @@
-/*
-
-The abstract syntax tree.
-
-*/
-
 pub type Id = String;
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Copy, PartialEq)]
+pub enum Pos {
+  Pos (usize, usize),
+}
+
+#[derive(Clone, Debug, Copy, PartialEq)]
 pub enum Type {
   ArrayType,
-  AssemblyType,
-  BlockType,
-  UndefType,
+  AsmType,
+  GadgetType,
+  VoidType,
 }
 
-#[derive(Debug)]
-pub enum Operator {
-  Equal,
+#[derive(Clone, Debug, PartialEq)]
+pub enum Variable {
+  Var (Id, Pos, Type),
 }
 
-#[derive(Debug)]
-pub enum Name {
-  Var (Id, Type),
+#[derive(Clone, Debug, PartialEq)]
+pub enum Const {
+  Asm (String, Pos, Type),
 }
 
-#[derive(Debug)]
-pub enum Exp<'a, 'b> {
-  Assign   (Name, &'a Exp<'a, 'b>),
-  Block    (Type, &'a Exp<'a, 'b>),
-  Variable (Name),
-  Let      (&'a Exp<'a, 'b>),
-  Assembly (Id),
-  Array    (&'b [Exp<'a, 'b>], Type),
-  Op       (Operator),
-  Lambda   (&'a &'b Exp<'a, 'b>, Type),
-  Ref      (Name),
+#[derive(Clone, Debug, PartialEq)]
+pub enum Exp {
+  Gadget   (Vec<Const>),
+  Call     (Variable),
+  Let      (Variable, Box<Exp>),
+  Array    (Vec<Const>),
+  Constant (Const),
   Empty,
 }
 
-#[derive(Debug)]
-pub enum AST<'a, 'b> {
-  Stat (Exp<'a, 'b>),
+#[derive(Clone, Debug, PartialEq)]
+pub enum AST {
+  Stat (Exp),
 }
 
-pub fn pp_ast(ast : Vec<AST>) -> () {
-  println!("-------- Printing the abstract syntax tree --------");
-  for node in ast {
-    println!("{:?}", node);
+pub fn lookup<'a>(id : &String, ast : &'a mut Vec<AST>) -> Option<&'a AST> {
+  for x in ast.iter().rev() {
+    if let AST::Stat(Exp::Let(Variable::Var(vname, _, _), _)) = x {
+      if vname == id { return Some(x) }
+    }
   }
+  None
 }

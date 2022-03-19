@@ -1,206 +1,296 @@
-/*
+use std::iter::Peekable;
+use std::str::Chars;
 
-Parse the stream of tokens into an abstract syntax tree.
-
-*/
-
-use utils::{err_line, read_file, pp_vec};
-use lexer::Token;
-use lexer::Token::*;
-use lexer::Pos;
-
-use symtab::*;
+use utils::{highlight};
 use ast::*;
-use self::SymTab::*;
-use self::Name::*;
+use typechecker::get_type;
+
+use self::Pos::Pos;
+use self::Variable::*;
+use self::Const::*;
 use self::Exp::*;
 use self::Type::*;
 use self::AST::*;
-use self::Pos::*;
-use self::IR::*;
 
-/* Intermediate representation of the parse tree to concatenate unseparated tokens.  */
-#[derive(Debug, Clone)]
-enum IR {
-  EntryIR,
-  BlockStartIR  (Pos),
-  BlockEndIR    (Pos),
-  CommaIR       (Pos),
-  EqualIR       (Pos),
-  IdentifierIR  (Pos, Id),
-  StringStartIR (Pos),
-  StringEndIR   (Pos),
-  SemicolonIR   (Pos),
-  AssemblyIR    (Pos, Id),
-  WhitespaceIR  (Pos),
+pub struct Token<'a> {
+  pub col  : usize,
+  pub line : usize,
+  pub src  : &'a String,
+  pub xs   : &'a mut Peekable<Chars<'a>>,
 }
 
-fn is_sep(t: &IR) -> bool {
-  match t {
-    BlockStartIR  (_) |
-    BlockEndIR    (_) |
-    CommaIR       (_) |
-    EqualIR       (_) |
-    StringStartIR (_) |
-    StringEndIR   (_) |
-    SemicolonIR   (_) |
-    WhitespaceIR  (_) => true,
-    _                 => false,
+macro_rules! line { ($t:ident) => { $t.line }; }
+macro_rules! col  { ($t:ident) => { $t.col  }; }
+macro_rules! pos  { ($t:ident) => { Pos($t.line, $t.col)  }; }
+
+macro_rules! sym      { ($t:ident) => { sym($t.xs) }; }
+macro_rules! next_sym { ($t:ident) => {{ align($t); next_sym($t.xs) }} }
+
+macro_rules! p_e {
+  ($t:ident, $exp:expr, $($args:tt)*) => {
+    error!["parser: ", $($args)*, "\n",
+           highlight($t.src, &$exp, Pos($t.line, $t.col))]
+  };
+}
+
+macro_rules! i_e {
+  ($t:ident, $exp:expr, $($args:tt)*) => {
+    p_e!($t, $exp, "internal: ", $($args)*)
+  };
+}
+
+#[inline(always)]
+fn some_eq<T : PartialEq>(xs : &[T], e : &T) -> bool {
+  xs.iter().find(|&x| x == e) != None
+}
+
+#[inline(always)]
+fn sep(c : char) -> bool {
+  some_eq(&[',', ';', '=', '\"', '/', '[', ']', '{', '}', '\0'], &c) || is_whitespace!(c)
+}
+
+#[inline(always)]
+fn sep_str(xs : &str) -> bool {
+  some_eq(&[",", ";", "=", "\"", "/", "[", "]", "{", "}", "\0"], &xs) || xs.trim().is_empty()
+}
+
+#[inline(always)]
+fn is_string(xs : &str) -> bool {
+  xs.starts_with('\"') && xs.ends_with('\"')
+}
+
+#[inline(always)]
+fn align(t : &mut Token<'_>) {
+  if sym!(t) == '\n' {
+    line!(t) = line!(t) + 1;
+    col!(t)  = 0;
+  }
+  col!(t) = col!(t) + 1;
+}
+
+#[inline(always)]
+fn sym(xs : &mut Peekable<Chars<'_>>) -> char {
+  match xs.peek() {
+    Some(&x) => x,
+    _        => '\0',
   }
 }
 
-fn ir_to_string(ir : &IR) -> String {
-  match ir {
-    EntryIR               => "entry",
-    BlockStartIR  (_)     => "{",
-    BlockEndIR    (_)     => "}",
-    CommaIR       (_)     => ",",
-    EqualIR       (_)     => "=",
-    IdentifierIR  (_, id) => id,
-    StringStartIR (_)     => "\"",
-    StringEndIR   (_)     => "\"",
-    SemicolonIR   (_)     => ";",
-    AssemblyIR    (_, id) => id,
-    WhitespaceIR  (_)     => " ",
-    _                     => error!("ir_to_string(): given IR was not found: ",
-                                    format!("{:?}", ir)),
-  }.to_string()
+#[inline(always)]
+fn next_sym(xs : &mut Peekable<Chars<'_>>) -> char {
+  let s = sym(xs);
+  xs.next();
+  s
 }
 
-fn tok_to_ir(t : Token, ir : IR) -> IR {
-  match (t, ir) {
-    (Identifier(_, c), IdentifierIR(p, s)) => {
-      let id = s + &c.to_string();
-      return IdentifierIR(p, id);
+fn backslash(t : &mut Token<'_>) -> String {
+  let mut s = String::new();
+  while sym!(t) == '\\'  { s.push(next_sym!(t)); }
+  if (s.len() % 2) != 0  { s.push(next_sym!(t)); }
+  s
+}
+
+fn string(t : &mut Token<'_>) -> String {
+  let mut s = string!(next_sym!(t));
+  while sym!(t) != '\"' {
+    match sym!(t) {
+      '\\' => s.push_str(&backslash(t)),
+      '\0' => p_e!(t, s, "expected closing `\"` "),
+      _    => s.push(next_sym!(t)),
     }
-    (AssemblyTok(_, c), AssemblyIR(p, s)) => {
-      let id = s + &c.to_string();
-      return AssemblyIR(p, id);
+  }
+  s.push(next_sym!(t));
+  if s.len() < 3 { p_e!(t, s, "some assembly is expected in: `\"\"`"); }
+  s
+}
+
+fn multiline_comment(t : &mut Token<'_>) {
+  let mut s : char;
+  next_sym!(t);
+  s = sym!(t);
+  while s != '\0' {
+    next_sym!(t);
+    if s == '*' && sym!(t) == '/' {
+      next_sym!(t);
+      return;
     }
-    (BlockStart(p), _) => {
-      return BlockStartIR(p);
-    }
-    (BlockEnd(p), _) => {
-      return BlockEndIR(p);
-    }
-    (Comma(p), _) => {
-      return CommaIR(p);
-    }
-    (EqualTok(p), _) => {
-      return EqualIR(p);
-    }
-    (Identifier(p, c), _) => {
-      return IdentifierIR(p, c.to_string());
-    }
-    (StringStart(p), _) => {
-      return StringStartIR(p);
-    }
-    (StringEnd(p), _) => {
-      return StringEndIR(p);
-    }
-    (Semicolon(p), _) => {
-      return SemicolonIR(p);
-    }
-    (AssemblyTok(p, c), _) => {
-      return AssemblyIR(p, c.to_string());
-    }
-    (Whitespace(p), _) => {
-      return WhitespaceIR(p);
-    }
-    (x, y) => {
-      error!("tok_to_ir(): unexpected match:\n", format!("{:?}", x),
-             "\nwith\n", format!("{:?}", y));
+    s = sym!(t);
+  }
+  p_e!(t, string!(""), "expected `*\\` somewhere after this: `/*`: ");
+}
+
+fn comment(t : &mut Token<'_>) {
+  next_sym!(t);
+  match sym!(t) {
+    '/' => while !some_eq(&['\n', '\0'], &next_sym!(t)) {},
+    '*' => multiline_comment(t),
+    _   => p_e!(t, string!(sym!(t)), "expected `/` or `*`"),
+  };
+}
+
+fn accept(t : &mut Token<'_>) -> String {
+  match sym!(t) {
+    '/'  => { comment(t); return accept(t); }
+    '\"' => return string(t),
+    _    => ()
+  };
+
+  if is_whitespace!(sym!(t)) {
+    next_sym!(t);
+    return accept(t);
+  }
+  else if sep(sym!(t)) {
+    return string!(next_sym!(t));
+  }
+
+  let mut s = string!(next_sym!(t));
+  while !sep(sym!(t)) { s.push(next_sym!(t)); }
+  s
+}
+
+fn unstring(xs : &str) -> &str {
+  let mut chars = xs.chars();
+  chars.next();
+  chars.next_back();
+  chars.as_str()
+}
+
+fn semicolon(t : &mut Token<'_>, xs : String) {
+  if xs != ";" {
+    let s = accept(t);
+    if s != ";" { p_e!(t, s, "expected: `;`, but got: ", s) }
+  }
+}
+
+fn asm(t : &mut Token<'_>, arr : &mut Vec<Const>, ast : &mut Vec<AST>) {
+  let xs = accept(t);
+  if is_string(&xs) { arr.push(Asm(string!(unstring(&xs)), pos!(t), AsmType)) }
+  else {
+    let x = lookup(&xs, ast);
+    match x {
+      Some(Stat(Let(Var(id, p, GadgetType), _))) =>
+        arr.push(Asm(string!(id), *p, GadgetType)),
+      Some(Stat(Let(Var(_, _, AsmType), e))) =>
+        match &**e {
+          Constant(Asm(s, p, _)) => arr.push(Asm(string!(s), *p, AsmType)),
+          y                      => p_e!(t, string!(xs), "unexpected const construct: `",
+                                         xs, "` of form: `", pp!(y), "`"),
+        },
+      Some(Stat(Let(_, e))) =>
+        match &**e {
+          Array(a)  => arr.append(&mut a.to_vec()),
+          y         => p_e!(t, string!(xs), "unexpected construct: `", xs,
+                            "` of form: `", pp!(y), "`"),
+        },
+      None => p_e!(t, string!(xs), "undefined identifier referenced: ", xs),
+      y    => i_e!(t, string!(xs), "unmatched: `", xs, "`: `", pp!(y), "`"),
     }
   }
 }
 
-/* Remove whitespaces from the intermediate representation of the parse tree. */
-fn remove_ws_ir(ir : Vec<IR>) -> Vec<IR> {
-  let mut irs : Vec<IR> = Vec::new();
-  for n in ir {
-    match n {
-      WhitespaceIR(_) => {}
-      a               => { irs.push(a); }
-    }
+fn set(t : &mut Token<'_>, ast : &mut Vec<AST>, closing : String) -> Exp {
+  let arr = &mut Vec::new();
+  asm(t, arr, ast);
+  let mut xs = accept(t);
+  while xs != closing {
+    match as_str!(xs) {
+      "," => asm(t, arr, ast),
+      _   => p_e!(t, string!(xs), "unexpected symbol: `", xs,
+                  "` expected `,` or `", closing, "`"),
+    };
+    xs = accept(t);
   }
-  return irs;
-}
-
-/* Parse the parse tree to its intermediate representation */
-fn parse_ir(parse_tree : &Vec<Token>) -> Vec<IR> {
-  let mut ir : Vec<IR> = Vec::new();
-
-  ir.push(EntryIR);
-  for tok in parse_tree {
-    let idx = ir.len()-1;
-    let n   = tok_to_ir(tok.clone(), ir[idx].clone());
-    if is_sep(&n) || is_sep(&ir[idx]) {
-      ir.push(n);
-    } else {
-      ir[idx] = n;
-    }
-  }
-
-  let ir = remove_ws_ir(ir);
-  return ir;
-}
-
-fn get_type(symtab : Vec<SymTab>, s : Id) -> Type {
-  match lookup(symtab, s) {
-    Some(Entry(id, ty)) => ty,
-    None                => UndefType,
+  if arr.is_empty() { p_e!(t, string!(""), "empty sets are disallowed") }
+  match as_str!(closing) {
+    "]" => Array(to_vec!(arr)),
+    "}" => Gadget(to_vec!(arr)),
+    _   => error!("set operation: unexpected symbol: ", closing),
   }
 }
 
-/* Parse the intermediate representation of the parse tree to an abstract syntax tree. */
-pub fn parser(parse_tree : &Vec<Token>, src : String) -> Vec<AST> {
-  let mut symtab : Vec<SymTab> = Vec::new();
-  let mut ast    : Vec<AST>    = Vec::new();
+fn gadget(t : &mut Token<'_>, ast : &mut Vec<AST>) -> Exp {
+  set(t, ast, string!("}"))
+}
 
-  let ir = parse_ir(parse_tree);
+fn array(t : &mut Token<'_>, ast : &mut Vec<AST>) -> Exp {
+  set(t, ast, string!("]"))
+}
 
-  let mut it = ir.iter().peekable();
-  while let Some(&n) = it.peek() {
-    match n {
-      IdentifierIR(p, s) => {
-        match &s[..] {
-          "let" => {
-            //let v = Let(...)
-          }
-          _     => {
-            let ty = get_type(symtab.clone(), s.to_string());
-            it.next();
-            match it.peek() {
-              Some(EqualIR(pos)) => {
+fn const_(t : &mut Token<'_>, xs : String) -> Exp {
+  if is_string(&xs) { Constant(Asm(string!(unstring(&xs)), pos!(t), AsmType)) }
+  else { p_e!(t, string!(xs), "expected some assembly, but got: ", xs) }
+}
 
-              }
-              Some(SemicolonIR(pos)) => {
-                match ty {
-                  UndefType => {
-                    error!("reference to undefined identifier: \'", s, "\'\n",
-                           err_line(&src, s, p));
-                  }
-                  _ => {}
-                }
-              }
-              Some(CommaIR(pos)) => {
+fn ref_(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
+  match lookup(&id, ast) {
+    Some(Stat(Let(_, e))) => *e.clone(),
+    _ => p_e!(t, string!(id), "undefined identifier referenced: ", id)
+  }
+}
 
-              }
-              _ => {}
-            }
-            symtab.push(Entry(s.clone(), UndefType));
-            let v = Ref(Var(s.clone(), UndefType));
-            ast.push(Stat(v));
-          }
-        }
+fn call(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
+  match lookup(&id, ast) {
+    Some(Stat(Let(v, _))) => Call(v.clone()),
+    _ => p_e!(t, string!(id), "undefined identifier called: ", id)
+  }
+}
+
+fn let_(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
+  let xs = accept(t);
+  match xs.chars().next().unwrap() {
+    '{' => Let(Var(id, pos!(t), GadgetType), box_!(gadget(t, ast))),
+    '"' => Let(Var(id, pos!(t), AsmType),    box_!(const_(t, xs))),
+    '[' => Let(Var(id, pos!(t), ArrayType),  box_!(array(t, ast))),
+    _   => {
+      let ty = get_type(&xs, ast);
+      match ty {
+        GadgetType => Let(Var(string!(id), pos!(t), ty), box_!(call(t, xs, ast))),
+        _          => Let(Var(string!(id), pos!(t), ty), box_!(ref_(t, xs, ast))),
       }
-      BlockStartIR(p) => {
-        // ...
-      }
-      _ => {}
     }
-
-    it.next();
   }
-  return ast;
+}
+
+fn ident(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
+  let ys = accept(t);
+  match as_str!(ys) {
+    "=" => let_(t, id, ast),
+    ";" => call(t, id, ast),
+    _   => p_e!(t, id, "unexpected identifier: `", id, "`"),
+  }
+}
+
+fn exp(t : &mut Token<'_>, xs : &str, ast : &mut Vec<AST>) -> Exp {
+  match xs {
+    "{" => gadget(t, ast),
+    ";" => Empty,
+    _   =>
+      if sep_str(xs) { p_e!(t, string!(xs), "unexpected keyword: `", xs, "`") }
+      else           { ident(t, string!(xs), ast) },
+  }
+}
+
+fn statement(t : &mut Token<'_>, xs : &str, ast : &mut Vec<AST>) {
+  let expr = exp(t, &xs, ast);
+  match expr {
+    Call(_) => (),
+    _       => semicolon(t, string!(xs)),
+  }
+  if expr != Empty { ast.push(Stat(expr)) };
+}
+
+fn block(t : &mut Token<'_>, ast : &mut Vec<AST>) {
+  let mut xs = accept(t);
+  while xs != "\0" {
+    statement(t, &xs, ast);
+    xs = accept(t);
+  }
+}
+
+pub fn parser(src : &String) -> Vec<AST> {
+  let mut ast : Vec<AST> = Vec::new();
+  let mut it = src.chars().peekable();
+  let mut t  = Token { line: 1, col: 1, src: src, xs: &mut it };
+  block(&mut t, &mut ast);
+  ast
 }

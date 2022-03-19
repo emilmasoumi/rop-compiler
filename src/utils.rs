@@ -1,12 +1,6 @@
-/*
-
-Different utility functions.
-
-*/
-
 use clap::{Arg, App};
 
-use lexer::{Pos};
+use ast::{Pos};
 use codegen::{Arch, ArchSize, AsmSyntax, CPUType, Endianess};
 
 use std::io::prelude::*;
@@ -32,27 +26,26 @@ macro_rules! error {
   }}
 }
 
-pub fn err_line(src : &String, id: &String, pos : &Pos) -> String {
-  let (l, c) = match pos {
-    Pos(l, c) => (l, c),
-    _         => error!("get_line(): given Pos is malformed: ", format!("{:?}", pos)),
-  };
-  let l = l - 1;
-  let c = c - 1;
+macro_rules! u_e { ($($args:tt)*) => { error!("cmd: ", $($args)*) }; }
 
-  let split : Vec<_> = src.split("\n").collect();
-  if l > split.len() - 1 {
-    error!("get_line(): index: ", l, " out of bounds.");
-  }
+macro_rules! string        { ($exp:expr) => { $exp.to_string()     }; }
+macro_rules! is_whitespace { ($exp:expr) => { $exp.is_whitespace() }; }
 
-  println!(" {} | {}", l+1, split[l]);
+macro_rules! as_str { ($id:ident) => { $id.as_str() }; }
+macro_rules! pp     { ($id:ident) => { format!("{:?}", $id) }; }
 
-  // ws1 := number of characters in " {} "
-  let ws1  = 2 + (l+1).to_string().len();
-  // ws2 := number of characters in " {}"
-  let ws2  = 1 + c;
-  let note = " ".repeat(ws1) + "|" + &" ".repeat(ws2) + "^" + &"^".repeat(id.len()-1);
-  return note;
+macro_rules! box_v { ($e:expr) => { Box::new($e.to_vec()) }; }
+macro_rules! box_  { ($e:expr) => { Box::new($e) }; }
+
+macro_rules! to_vec { ($e:expr) => { $e.to_vec() }; }
+
+pub fn highlight(src : &String, id: &String, pos : Pos) -> String {
+  let (l, c) = match pos { Pos(x, y) => (x, y) };
+  let split : Vec<_> = src.split('\n').collect();
+  println!(" {}:{} | {}", l, c, split[l-1]);
+
+  let ws  = 3 + string!(l).len() + string!(c).len();
+  " ".repeat(ws) + "|" + &" ".repeat(c-id.len()) + &"^".repeat(id.len())
 }
 
 pub fn read_file(filename : &String) -> String {
@@ -75,45 +68,37 @@ pub fn is_hex(s : &String) -> bool {
   if s.len() > 2 {
     let bytes = s.as_bytes();
     if bytes[0] == b'0' && (bytes[1] == b'x' || bytes[1] == b'X') {
-      return s[2..].chars().all(|x| x.is_ascii_hexdigit());
+     return s[2..].chars().all(|x| x.is_ascii_hexdigit())
     }
   }
-  return s.chars().all(|x| x.is_ascii_hexdigit());
+  s.chars().all(|x| x.is_ascii_hexdigit())
 }
 
-// Note: fmt::Debug: {:?} depicts '\' as '\\\'.
-pub fn pp_vec<T : Debug>(v : &Vec<T>) -> () {
-  for e in v {
-    println!("{:?}", e);
-  }
+// fmt::Debug: {:?} depicts '\' as '\\\'.
+pub fn pp_vec<T : Debug>(v : Vec<T>) {
+  v.iter().for_each(|e| println!("{:?}", e));
 }
 
-/*
-  Split the .rop file from the given binaries.
-*/
-fn split_src_bin(mut srcs : Vec<String>) -> (String, Vec<String>) {
+fn get_src_bin(mut srcs : Vec<String>) -> (String, Vec<String>) {
   let mut src : String = String::new();
-  let mut cnt = 0;
 
-  for s in &srcs {
-    if s.ends_with(".rop") {
-      src = s.clone();
-      cnt = cnt + 1;
-    }
-  }
+  let cnt = srcs.iter().fold(0, |acc, s|
+      if s.ends_with(".rop") {src = s.clone(); acc + 1} else {acc});
+
   if cnt != 1 {
-    error!("expected exactly 1 source file with extension `.rop`, but got ", cnt, " instead: ",
-           format!("{:?}", srcs));
+    error!("expected exactly 1 source file with extension `.rop`, but got ",
+           cnt, " instead: ", pp!(srcs));
   }
   else if srcs.len() < 2 {
-    error!("expected at least 1 binary file, but got 0 instead: ", format!("{:?}", srcs));
+    error!("expected at least 1 binary file, but got 0 instead: ", pp!(srcs));
   }
+
   srcs.retain(|x| !x.ends_with(".rop"));
-  return (src.clone(), srcs);
+  (src, srcs)
 }
 
-pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess, AsmSyntax,
-                            CPUType, Option<String>, bool, bool, bool) {
+pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess,
+                            AsmSyntax, CPUType, Option<String>, bool, bool) {
   let matches =
       App::new("ROP and JOP compiler")
       .version("0.0.1")
@@ -129,7 +114,7 @@ pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess, AsmS
            .long("arch")
            .required(true)
            .takes_value(true)
-           .possible_values(&["arm", "mips", "sparc", "wasm", "x86"])
+           .possible_values(&["arm", "x86"])
            .help("Instruction set architecture.")
           )
       .arg(Arg::with_name("architecture-size")
@@ -161,8 +146,7 @@ pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess, AsmS
            .short("c")
            .long("cpu")
            .takes_value(true)
-           .possible_values(&["v8", "cortex", "mips32", "mips64", "micro", "r6", "v3",
-                              "v2", "v9"])
+           .possible_values(&["v8", "cortex", "r6", "v3", "v2", "v9"])
            .help("Select a specific CPU type.")
           )
       .arg(Arg::with_name("delete-bytes")
@@ -177,12 +161,6 @@ pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess, AsmS
            .takes_value(false)
            .help("Insert hexadecimal escape sequences for every byte in the payload.")
           )
-      .arg(Arg::with_name("pp-ast")
-           .short("P")
-           .long("ppast")
-           .takes_value(false)
-           .help("Pretty-print the abstract syntax tree.")
-          )
       .arg(Arg::with_name("pp-gadgets")
            .short("p")
            .long("ppgadgets")
@@ -194,17 +172,14 @@ pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess, AsmS
   let files : Vec<_> =
     matches.values_of("binaries")
            .unwrap()
-           .map(|s| s.to_string())
+           .map(|s| string!(s))
            .collect();
 
   let arch : Arch =
     match matches.value_of("architecture") {
       Some("arm")   => ArchARM,
-      Some("mips")  => ArchMIPS,
-      Some("sparc") => ArchSPARC,
-      Some("wasm")  => ArchWasm,
       Some("x86")   => ArchX86,
-      _             => error!("The instruction set architecture were not specified."),
+      _             => u_e!("The instruction set architecture were not specified."),
     };
 
   let archsize : ArchSize =
@@ -213,14 +188,14 @@ pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess, AsmS
       Some("16") => BitSize16,
       Some("32") => BitSize32,
       Some("64") => BitSize64,
-      _          => error!("The instruction set architecture bit-size were not specified."),
+      _          => u_e!("The instruction set architecture bit-size were not specified."),
     };
 
   let endianess : Endianess =
     match matches.value_of("endianess") {
       Some("lsb") => Lsb,
       Some("msb") => Msb,
-      _           => error!("Endianess of the given binaries were not specified."),
+      _           => u_e!("Endianess of the given binaries were not specified."),
     };
 
   let syntax : AsmSyntax =
@@ -233,9 +208,6 @@ pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess, AsmS
     match matches.value_of("cpu-type") {
       Some("v8")     => V8,
       Some("cortex") => Cortex,
-      Some("mips32") => MIPS32,
-      Some("mips64") => MIPS64,
-      Some("micro")  => Micro,
       Some("r6")     => R6,
       Some("v3")     => V3,
       Some("v2")     => V2,
@@ -244,24 +216,20 @@ pub fn parse_cmd_args() -> (String, Vec<String>, Arch, ArchSize, Endianess, AsmS
     };
 
   let del_bytes : Option<String> =
-    match matches.value_of("delete-bytes") {
-      Some(s) => Some(s.to_string()),
-      None    => None,
-    };
+    matches.value_of("delete-bytes").map(|s| string!(s));
 
   if let Some(ref del_bytes) = del_bytes {
-    if !is_hex(&del_bytes) {
+    if !is_hex(del_bytes) {
         error!("-d --delete \'", del_bytes, "\' is not a hexadecimal value.");
     }
   }
 
   let hex       : bool = matches.is_present("insert-hex-sequences");
-  let ppast     : bool = matches.is_present("pp-ast");
   let ppgadgets : bool = matches.is_present("pp-gadgets");
 
-  let (src, bins) = split_src_bin(files);
+  let (src, bins) = get_src_bin(files);
 
-  return (src, bins, arch, archsize, endianess, syntax,
-          cputype, del_bytes, hex, ppast, ppgadgets);
+  (src, bins, arch, archsize, endianess, syntax,
+   cputype, del_bytes, hex, ppgadgets)
 
 }

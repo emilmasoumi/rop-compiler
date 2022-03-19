@@ -1,7 +1,108 @@
-/*
+use ast::*;
+use utils::{highlight};
 
-*/
+use self::Variable::*;
+use self::Const::*;
+use self::Exp::*;
+use self::Type::*;
+use self::AST::*;
 
-pub fn typechecker() -> () {
+macro_rules! t_e {
+  ($src:ident, $id:expr, $pos:ident, $($args:tt)*) => {
+    error!["type: ", $($args)*, "\n", highlight($src, &$id, *$pos)]
+  };
+}
 
+macro_rules! i_e { ($($args:tt)*) => { error!["type: internal: ", $($args)*] }; }
+
+fn pp_ty(ty : &Type) -> &str {
+  match ty {
+    ArrayType  => "type: `Array`",
+    AsmType    => "type: `Asm`",
+    GadgetType => "type: `Gadget`",
+    VoidType   => "type: `Void`",
+  }
+}
+
+fn pp_exp_ty(e : &Exp) -> &str {
+  match e {
+    Gadget(_)   |
+    Call(_)     => "type: `Gadget`",
+    Let(_, exp) => pp_exp_ty(exp),
+    Array(_)    => "type: `Array`",
+    Constant(_) => "type: `Asm`",
+    _           => "type: unfound",
+  }
+}
+
+pub fn get_type(id : &String, ast : &mut Vec<AST>) -> Type {
+  for x in ast.iter().rev() {
+    if let Stat(Let(Var(vname, _, ty), _)) = x { if vname == id { return *ty } }
+  }
+  VoidType
+}
+
+fn verify_ty(src : &String, vname : &Variable, e : &Exp) {
+  match (vname, e) {
+    (Var(_, _, GadgetType), Gadget(_))   |
+    (Var(_, _, GadgetType), Call(_))     |
+    (Var(_, _, ArrayType),  Array(_))    |
+    (Var(_, _, AsmType),    Constant(_)) => (),
+    (Var(id, pos, ty), _) =>  t_e!(src, id, pos, "type mismatch: `", id,
+                                   "`: expected ", pp_exp_ty(e), ", actual ", pp_ty(ty)),
+  }
+}
+
+fn const_(src : &String, c : &Const) {
+  match c {
+    Asm(_, _, AsmType) => (),
+    Asm(asm, pos, ty)  => t_e!(src, asm, pos, asm, ": unexpected ", pp_ty(ty)),
+  }
+}
+
+fn gadget(src : &String, gadget : &[Const]) {
+  for e in gadget {
+    if let Asm(asm, pos, VoidType) = e {
+      t_e!(src, asm, pos, "unresolved type for: ", pp!(asm))
+    }
+  }
+}
+
+fn array(src : &String, arr : &[Const]) {
+  for e in arr {
+    match e {
+      Asm(_, _, AsmType)    |
+      Asm(_, _, GadgetType) => (),
+      Asm(id, pos, ty)      => t_e!(src, id, pos, id, ": unexpected ", pp_ty(ty)),
+    }
+  }
+}
+
+fn call(src : &String, var : &Variable) {
+  match var {
+    Var(_, _, GadgetType) => (),
+    Var(id, pos, ty)      => t_e!(src, id, pos, id, ": unexpected ", pp_ty(ty)),
+  }
+}
+
+fn let_(src : &String, vname : &Variable, e : &Exp) {
+  match e {
+    Gadget(g)   => gadget(src, g),
+    Call(v)     => call(src, v),
+    Array(a)    => array(src, a),
+    Constant(c) => const_(src, c),
+    _           => i_e!("unexpected construct: ", pp!(e)),
+  };
+  verify_ty(src, vname, e)
+}
+
+pub fn typechecker(src : &String, ast : &[AST]) {
+  ast.iter().enumerate().for_each(|(_i, x)| {
+    match x {
+      Stat(Gadget(g)) => gadget(src, g),
+      Stat(Call(v))   => call(src, v),
+      Stat(Let(v, e)) => let_(src, v, e),
+      _               => i_e!("wrong construct at global scope: ", pp!(x)),
+    }
+  });
 }

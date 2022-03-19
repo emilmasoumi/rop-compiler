@@ -1,14 +1,9 @@
-/*
-
-Generate the exploit payload from the abstract syntax tree.
-
-*/
-
 use capstone::prelude::*;
 
 use std::process::Command;
 use std::io::{self, Write};
 
+use ast::*;
 use utils::{is_hex};
 
 use self::Arch::*;
@@ -20,9 +15,6 @@ use self::Endianess::*;
 #[derive(Debug)]
 pub enum Arch {
   ArchARM,
-  ArchMIPS,
-  ArchSPARC,
-  ArchWasm,
   ArchX86,
 }
 
@@ -46,9 +38,6 @@ pub enum CPUType {
   NoCPUType,
   V8,
   Cortex,
-  MIPS32,
-  MIPS64,
-  Micro,
   R6,
   V3,
   V2,
@@ -61,17 +50,15 @@ pub enum Endianess {
   Msb,
 }
 
-/* rasm2 arguments; accessed with: array[EnumField as usize] */
-static ARCHS:     &'static [&str] = &["arm", "mips", "sparc", "wasm", "x86"];
-static ARCHSIZES: &'static [&str] = &["8", "16", "32", "64"];
-static CPUTYPES:  &'static [&str] = &["", "v8", "cortex", "mips32", "mips64", "micro", "r6",
-                                      "v3", "v2", "v9"];
-static ENDIAN:    &'static [&str] = &["", "-e"];
-static SYNTAX:    &'static [&str] = &["att", "intel"];
+static ARCHS:     &[&str] = &["arm", "x86"];
+static ARCHSIZES: &[&str] = &["8", "16", "32", "64"];
+static CPUTYPES:  &[&str] = &["", "v8", "cortex", "r6", "v3", "v2", "v9"];
+static ENDIAN:    &[&str] = &["", "-e"];
+static SYNTAX:    &[&str] = &["att", "intel"];
 
-/*
-  Assemble `code` and return its opcodes.
-*/
+fn transform() {
+}
+
 fn assemble(code : String, arch_idx : usize, archsize_idx : usize,
             endianess_idx : usize, cputype_idx : usize, syntax_idx : usize) -> String {
   let mut options = vec![];
@@ -87,11 +74,11 @@ fn assemble(code : String, arch_idx : usize, archsize_idx : usize,
   options.push(archsize);
   options.push("-s");
   options.push(syntax);
-  if cputype.len() > 0 {
+  if !cputype.is_empty() {
     options.push("-c");
     options.push(cputype);
   }
-  if endianess.len() > 0 {
+  if !endianess.is_empty() {
     options.push(endianess);
   }
   options.push(&code);
@@ -112,13 +99,12 @@ fn assemble(code : String, arch_idx : usize, archsize_idx : usize,
   let opcodes_str = String::from_utf8_lossy(&opcodes.stdout).split_whitespace().collect();
 
   if failure.len() > 0 || !opcodes.status.success() {
-    let sh_cmd;
-    if cfg!(target_os = "windows") {
-      sh_cmd = "start C:\rasm2.exe ";
+    let sh_cmd = if cfg!(target_os = "windows") {
+      "start C:\rasm2.exe "
     }
     else {
-      sh_cmd = "/bin/rasm2 ";
-    }
+      "/bin/rasm2 "
+    };
     error!("assembling:\n", code, "\nfailed with output:\n", failure, opcodes_str,
            "\nfrom the following shell command:\n", sh_cmd, options.join(" "));
   }
@@ -128,13 +114,13 @@ fn assemble(code : String, arch_idx : usize, archsize_idx : usize,
            "\nis not of hexadecimal format.");
   }
 
-  return opcodes_str;
+  opcodes_str
 }
 
-fn read_bytes(bin : &String) -> Vec<u8> {
+fn read_bytes(bin : &str) -> Vec<u8> {
   match std::fs::read(bin) {
     Ok(bytes) => {
-      return bytes;
+      bytes
     }
     Err(e) => {
       error!("failed reading from: \'", bin, "\': ", e);
@@ -143,19 +129,21 @@ fn read_bytes(bin : &String) -> Vec<u8> {
 }
 
 fn byte_to_nibbles(byte : u8) -> (u8, u8) {
-  return ((byte >> 4) & 0b1111, byte & 0b1111);
+  ((byte >> 4) & 0b1111, byte & 0b1111)
 }
 
-pub fn codegen(bins : Vec<String>, arch : Arch, archsize : ArchSize, endianess : Endianess,
-               syntax : AsmSyntax, cputype : CPUType) -> String {
-  return codegen_(bins, arch as usize, archsize as usize, endianess as usize,
-                  syntax as usize, cputype as usize);
+pub fn codegen(ast : &[AST], bins : Vec<String>, arch : Arch,
+               archsize : ArchSize, endianess : Endianess, syntax : AsmSyntax,
+               cputype : CPUType) -> String {
+  codegen_(ast, bins, arch as usize, archsize as usize, endianess as usize,
+           syntax as usize, cputype as usize)
 }
 
 /* Dummy code for now. */
-fn codegen_(bins : Vec<String>, arch : usize, archsize : usize, endianess : usize,
-            syntax : usize, cputype : usize) -> String {
-  assemble("mov rax, rax; mov rax, rax;".to_string(), arch , archsize, endianess, cputype, syntax);
+fn codegen_(ast : &[AST], bins : Vec<String>, arch : usize, archsize : usize,
+            endianess : usize, syntax : usize, cputype : usize) -> String {
+  assemble("mov rax, rax; mov rax, rax;".to_string(),
+           arch , archsize, endianess, cputype, syntax);
 //  println!("{}", assemble("mov rax, rax; mov rax, rax;".to_string(),
 //           arch , archsize, endianess, cputype, syntax));
 //  println!("{}", assemble("add rsi, rcx;".to_string(),
@@ -171,10 +159,10 @@ fn codegen_(bins : Vec<String>, arch : usize, archsize : usize, endianess : usiz
   for x in &prog_opcodes {
     let (nib1, nib2) = byte_to_nibbles(*x);
     if nib1 == 0xc && nib2 == 0x3 {
-      cnt = cnt + 1;
+      cnt += 1;
     }
   }
   //println!("cnt = {}", cnt);
 
-  return "".to_string();
+  string!("")
 }

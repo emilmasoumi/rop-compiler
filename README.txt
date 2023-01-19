@@ -1,49 +1,42 @@
 A return-oriented programming (ROP) compiler that compiles a domain-specific
 programming language to a return-oriented program. Such program is an exploit
 payload based on stack buffer overflows on binary executables consisting of
-gadgets that can be chained together. The compiler can generically be applied
-to compile any instruction-oriented program such as jump-oriented programs
-(JOP).
+gadgets that can be chained together. The compiler is more specifically a
+gadget chain compiler, as it can generically be applied to interchangeably
+compile any instruction(s)-oriented program such as jump-oriented programs (JOP)
+or both ROP and JOP in the same gadget chain.
+
+The compiler supports the architectures: ARM/ARM64, MIPS32/64, SPARC32/64,
+x86/x64, and the file formats: ELF, PE, Mach-O.
 
 The language is specified in the syntax and semantics section.
 
 ------------
-Dependencies:
-radare2
-
-------------
 Building:
-make -j$(nproc)
+make
 
 ------------
 Usage:
-./ropc <binaries> <endianess> <architecture> <architecture-size> [options]
+./ropc <src-code> <binary> <cpu-type> [options]
 arguments:
-    <binaries>...:
-      Source code file and binary file(s).
-    <-a --arch> <architecture>:
-      Instruction set architecture.
-      <possible values: arm, x86>
-    <-b --archsize> <architecture-size>:
-      Architecture bit-size. <possible values: 8, 16, 32, 64>
-    <-e --endianess> <endianess>:
-      Endianess of the binary file(s). <possible values: lsb, msb>
-    {-s --select} <syntax>:
-      Select the assembly syntax. <possible values: att, intel>
+    <src-code>:
+      Source code file.
+    <binary>:
+      Binary executable file.
+    <-c --cputype> <cpu-type>:
+      Computer architecture/CPU type. <possible values: arm, thumb, armv8,
+      micro, mips3, mips32r6, mips32, mips64, sparc32, sparcv9, x86-16, x86-32,
+      x86-64>
 options:
-    {-c --cpu} <cpu-type>:
-      Select a specific CPU type.
-      <possible values: v8, cortex, r6, v3, v2, v9>
-    {-d --delete} <bytes>:
-      Delete all occurrences of the given byte from the payload.
-    {-H --hex}:
-      Insert hexadecimal escape sequences for every byte in the payload.
+    {-b --bytewise}:
+      Search for memory addresses byte-wise instead of mnemonic-wise.
     {-h --help}:
       Print this usage message.
-    {-P --ppast}:
-      Pretty-print the abstract syntax tree.
-    {-p --ppgadgets}:
-      Pretty-print the gadget chain.
+    {-o --individually}:
+      Output the addresses in the gadget chain individually.
+    {-s --select} <syntax>:
+      The assembly syntax for dis/assembling. <possible values: att, gas,
+      intel, nasm>
 
 ------------
 Syntax and semantics:
@@ -112,7 +105,7 @@ evaluates to:
   "push rax; sub rbx, rcx;", "pop rax; sub rbx, rcx;"
 };
 
-A gadget evaluates to the memory address of its instruction offset. A gadget
+A gadget evaluates to the memory address offset of its instruction(s). A gadget
 is inserted into the payload when it is referenced at a global scope:
 
 gadget1 = { "pop rsi; ret;" };

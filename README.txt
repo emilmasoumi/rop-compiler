@@ -13,10 +13,12 @@ The language is specified in the syntax and semantics section.
 
 ------------
 Building:
+
 make
 
 ------------
 Usage:
+
 ./ropc <src-code> <binary> <cpu-type> [options]
 arguments:
     <src-code>:
@@ -40,6 +42,7 @@ options:
 
 ------------
 Syntax and semantics:
+
 A gadget contains one or more sequences of machine code instructions that the
 compiler will search for in the binary. Gadgets can contain multiple subgadgets
 meaning that the compiler will use the first subgadget it can identify as a
@@ -124,7 +127,7 @@ Example:
 // Assume x64 architecture and an executable binary that was compiled with:
 // `gcc main.c -o main`.
 // A ROP/JOP program can then be compiled with:
-// ./ropc src.rop main -a x86 -b 64 -s att -e lsb
+// ./ropc src.rop main -c x86-64 -s att
 
 r    = "ret";
 regs = ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",

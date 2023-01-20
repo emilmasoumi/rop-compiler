@@ -35,7 +35,9 @@ macro_rules! box_  { ($e:expr) => { Box::new($e) }; }
 
 macro_rules! to_vec { ($e:expr) => { $e.to_vec() }; }
 
-pub fn highlight(src : &String, id: &String, pos : Pos) -> String {
+pub fn highlight(src : &str,
+                 id  : &str,
+                 pos : Pos) -> String {
   let (l, c) = match pos { Pos(x, y) => (x, y) };
   let split : Vec<_> = src.split('\n').collect();
   println!(" {}:{} | {}", l, c, split[l-1]);
@@ -60,7 +62,7 @@ pub fn read_file(filename : &String) -> String {
   }
 }
 
-pub fn is_hex(s : &String) -> bool {
+pub fn is_hex(s : &str) -> bool {
   if s.len() > 2 {
     let bytes = s.as_bytes();
     if bytes[0] == b'0' && (bytes[1] == b'x' || bytes[1] == b'X') {
@@ -94,8 +96,12 @@ fn get_src_bin(mut srcs : Vec<String>) -> (String, String) {
   (src, own!(srcs[0]))
 }
 
-pub fn parse_cmd_args() -> (String, String, (Arch, Mode),
-                            (OptionValue, x86::ArchSyntax), bool, bool) {
+pub fn parse_cmd_args() -> (String,
+                            String,
+                            (Arch, Mode),
+                            (OptionValue, x86::ArchSyntax),
+                            bool,
+                            bool) {
   let matches =
       App::new("ROP and JOP compiler")
       .version("0.0.1")

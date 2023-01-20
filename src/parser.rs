@@ -155,14 +155,17 @@ fn unstring(xs : &str) -> &str {
   chars.as_str()
 }
 
-fn semicolon(t : &mut Token<'_>, xs : String) {
+fn semicolon(t  : &mut Token<'_>,
+             xs : String) {
   if xs != ";" {
     let s = accept(t);
     if s != ";" { p_e!(t, s, "expected: `;`, but got: ", s) }
   }
 }
 
-fn asm(t : &mut Token<'_>, arr : &mut Vec<Const>, ast : &mut Vec<AST>) {
+fn asm(t   : &mut Token<'_>,
+       arr : &mut Vec<Const>,
+       ast : &mut [AST]) {
   let xs = accept(t);
   if is_string(&xs) { arr.push(Asm(string!(unstring(&xs)), pos!(t), AsmType)) }
   else {
@@ -188,7 +191,9 @@ fn asm(t : &mut Token<'_>, arr : &mut Vec<Const>, ast : &mut Vec<AST>) {
   }
 }
 
-fn set(t : &mut Token<'_>, ast : &mut Vec<AST>, closing : String) -> Exp {
+fn set(t       : &mut Token<'_>,
+       ast     : &mut [AST],
+       closing : String) -> Exp {
   let arr = &mut Vec::new();
   asm(t, arr, ast);
   let mut xs = accept(t);
@@ -208,34 +213,43 @@ fn set(t : &mut Token<'_>, ast : &mut Vec<AST>, closing : String) -> Exp {
   }
 }
 
-fn gadget(t : &mut Token<'_>, ast : &mut Vec<AST>) -> Exp {
+fn gadget(t   : &mut Token<'_>,
+          ast : &mut [AST]) -> Exp {
   set(t, ast, string!("}"))
 }
 
-fn array(t : &mut Token<'_>, ast : &mut Vec<AST>) -> Exp {
+fn array(t   : &mut Token<'_>,
+         ast : &mut [AST]) -> Exp {
   set(t, ast, string!("]"))
 }
 
-fn const_(t : &mut Token<'_>, xs : String) -> Exp {
+fn const_(t  : &mut Token<'_>,
+          xs : String) -> Exp {
   if is_string(&xs) { Constant(Asm(string!(unstring(&xs)), pos!(t), AsmType)) }
   else { p_e!(t, string!(xs), "expected some assembly, but got: ", xs) }
 }
 
-fn ref_(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
+fn ref_(t   : &mut Token<'_>,
+        id  : String,
+        ast : &mut [AST]) -> Exp {
   match lookup(&id, ast) {
     Some(Stat(Let(_, e))) => *e.clone(),
     _ => p_e!(t, string!(id), "undefined identifier referenced: ", id)
   }
 }
 
-fn call(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
+fn call(t   : &mut Token<'_>,
+        id  : String,
+        ast : &mut [AST]) -> Exp {
   match lookup(&id, ast) {
     Some(Stat(Let(v, _))) => Call(v.clone()),
     _ => p_e!(t, string!(id), "undefined identifier called: ", id)
   }
 }
 
-fn let_(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
+fn let_(t   : &mut Token<'_>,
+        id  : String,
+        ast : &mut [AST]) -> Exp {
   let xs = accept(t);
   match xs.chars().next().unwrap() {
     '{' => Let(Var(id, pos!(t), GadgetType), box_!(gadget(t, ast))),
@@ -251,7 +265,9 @@ fn let_(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
   }
 }
 
-fn ident(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
+fn ident(t   : &mut Token<'_>,
+         id  : String,
+         ast : &mut [AST]) -> Exp {
   let ys = accept(t);
   match as_str!(ys) {
     "=" => let_(t, id, ast),
@@ -260,7 +276,9 @@ fn ident(t : &mut Token<'_>, id : String, ast : &mut Vec<AST>) -> Exp {
   }
 }
 
-fn exp(t : &mut Token<'_>, xs : &str, ast : &mut Vec<AST>) -> Exp {
+fn exp(t   : &mut Token<'_>,
+       xs  : &str,
+       ast : &mut [AST]) -> Exp {
   match xs {
     "{" => gadget(t, ast),
     ";" => Empty,
@@ -270,8 +288,10 @@ fn exp(t : &mut Token<'_>, xs : &str, ast : &mut Vec<AST>) -> Exp {
   }
 }
 
-fn statement(t : &mut Token<'_>, xs : &str, ast : &mut Vec<AST>) {
-  let expr = exp(t, &xs, ast);
+fn statement(t   : &mut Token<'_>,
+             xs  : &str,
+             ast : &mut Vec<AST>) {
+  let expr = exp(t, xs, ast);
   match expr {
     Call(_) => (),
     _       => semicolon(t, string!(xs)),
@@ -279,7 +299,8 @@ fn statement(t : &mut Token<'_>, xs : &str, ast : &mut Vec<AST>) {
   if expr != Empty { ast.push(Stat(expr)) };
 }
 
-fn block(t : &mut Token<'_>, ast : &mut Vec<AST>) {
+fn block(t   : &mut Token<'_>,
+         ast : &mut Vec<AST>) {
   let mut xs = accept(t);
   while xs != "\0" {
     statement(t, &xs, ast);

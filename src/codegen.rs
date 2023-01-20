@@ -38,7 +38,8 @@ fn kmp_table(needle : &[u8]) -> Vec<usize> {
   table
 }
 
-fn kmp(haystack : &[u8], needle : &[u8]) -> Option<usize> {
+fn kmp(haystack : &[u8],
+       needle   : &[u8]) -> Option<usize> {
   let (mut i, mut j, mut _idx, table) = (0, 0, 0, kmp_table(needle));
   //let mut idxs = Vec::new();
 
@@ -66,10 +67,12 @@ fn kmp(haystack : &[u8], needle : &[u8]) -> Option<usize> {
   //idxs
 }
 
-fn assemble(engine : &Keystone, code : String, pos : &Pos) -> Vec<u8> {
+fn assemble(engine : &Keystone,
+            code   : String,
+            pos    : &Pos) -> Vec<u8> {
   engine
     .asm(own!(code), 0)
-    .expect(&format!("error: {} assembler: {}", pp_pos(pos), code))
+    .unwrap_or_else(|_| error!(format!("Failed assembling:\n{} | {} ", pp_pos(pos), code)))
     .bytes
 }
 
@@ -160,7 +163,8 @@ fn no_gadget_err(gadget : &[Const]) -> ! {
   error!("Failed to find a memory address for the gadget(s):\n", g);
 }
 
-fn mnemonicwise_search(gadget : &[Const], insns : &Instructions<'_>,
+fn mnemonicwise_search(gadget : &[Const],
+                       insns  : &Instructions<'_>,
                        engine : &Keystone) -> String {
   for g in gadget {
     match g {
@@ -177,8 +181,10 @@ fn mnemonicwise_search(gadget : &[Const], insns : &Instructions<'_>,
   no_gadget_err(gadget)
 }
 
-fn bytewise_search(addr_offs : u64, gadget : &[Const], opcodes : &[u8],
-                   engine : &Keystone) -> String {
+fn bytewise_search(gadget    : &[Const],
+                   opcodes   : &[u8],
+                   engine    : &Keystone,
+                   addr_offs : u64) -> String {
   for g in gadget {
     match g {
       Asm(asm, pos, _) => {
@@ -192,11 +198,15 @@ fn bytewise_search(addr_offs : u64, gadget : &[Const], opcodes : &[u8],
   no_gadget_err(gadget)
 }
 
-fn eval_gadget(opcodes : &[u8], gadget : &[Const], insns : &Instructions<'_>,
-               engine : &Keystone, bytewise : bool,
-               addr_offset : u64, outind : bool) -> String {
+fn eval_gadget(opcodes     : &[u8],
+               gadget      : &[Const],
+               insns       : &Instructions<'_>,
+               engine      : &Keystone,
+               addr_offset : u64,
+               bytewise    : bool,
+               outind      : bool) -> String {
   let addr = if bytewise {
-    bytewise_search(addr_offset, gadget, opcodes, engine)
+    bytewise_search(gadget, opcodes, engine, addr_offset)
   }
   else {
     mnemonicwise_search(gadget, insns, engine)
@@ -205,9 +215,12 @@ fn eval_gadget(opcodes : &[u8], gadget : &[Const], insns : &Instructions<'_>,
   else      { addr        }
 }
 
-pub fn codegen(ast : &[AST], bin : String, archcpu : (Arch, Mode),
-               syntax : (OptionValue, arch::x86::ArchSyntax),
-               bytewise : bool, outind : bool) -> String {
+pub fn codegen(ast      : &[AST],
+               bin      : String,
+               archcpu  : (Arch, Mode),
+               syntax   : (OptionValue, arch::x86::ArchSyntax),
+               bytewise : bool,
+               outind   : bool) -> String {
   let data = read_bytes(&bin);
 
   let engine = Keystone::new(archcpu.0, archcpu.1)
@@ -240,7 +253,7 @@ pub fn codegen(ast : &[AST], bin : String, archcpu : (Arch, Mode),
 
   ast.iter().map(|n| {
     match n {
-      Stat(Gadget(g)) => eval_gadget(opcodes, g, &insns, &engine, bytewise, addr_offset, outind),
+      Stat(Gadget(g)) => eval_gadget(opcodes, g, &insns, &engine, addr_offset, bytewise, outind),
       _ => string!("")
     }
   }).collect()

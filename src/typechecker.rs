@@ -35,14 +35,17 @@ fn pp_exp_ty(e : &Exp) -> &str {
   }
 }
 
-pub fn get_type(id : &String, ast : &mut Vec<AST>) -> Type {
+pub fn get_type(id  : &String,
+                ast : &mut [AST]) -> Type {
   for x in ast.iter().rev() {
     if let Stat(Let(Var(vname, _, ty), _)) = x { if vname == id { return *ty } }
   }
   VoidType
 }
 
-fn verify_ty(src : &String, vname : &Variable, e : &Exp) {
+fn verify_ty(src   : &str,
+             vname : &Variable,
+             e     : &Exp) {
   match (vname, e) {
     (Var(_, _, GadgetType), Gadget(_))   |
     (Var(_, _, GadgetType), Call(_))     |
@@ -53,14 +56,16 @@ fn verify_ty(src : &String, vname : &Variable, e : &Exp) {
   }
 }
 
-fn const_(src : &String, c : &Const) {
+fn const_(src : &str,
+          c   : &Const) {
   match c {
     Asm(_, _, AsmType) => (),
     Asm(asm, pos, ty)  => t_e!(src, asm, pos, asm, ": unexpected ", pp_ty(ty)),
   }
 }
 
-fn gadget(src : &String, gadget : &[Const]) {
+fn gadget(src    : &str,
+          gadget : &[Const]) {
   for e in gadget {
     if let Asm(asm, pos, VoidType) = e {
       t_e!(src, asm, pos, "unresolved type for: ", pp!(asm))
@@ -68,7 +73,8 @@ fn gadget(src : &String, gadget : &[Const]) {
   }
 }
 
-fn array(src : &String, arr : &[Const]) {
+fn array(src : &str,
+         arr : &[Const]) {
   for e in arr {
     match e {
       Asm(_, _, AsmType)    |
@@ -78,14 +84,17 @@ fn array(src : &String, arr : &[Const]) {
   }
 }
 
-fn call(src : &String, var : &Variable) {
+fn call(src : &str,
+        var : &Variable) {
   match var {
     Var(_, _, GadgetType) => (),
     Var(id, pos, ty)      => t_e!(src, id, pos, id, ": unexpected ", pp_ty(ty)),
   }
 }
 
-fn let_(src : &String, vname : &Variable, e : &Exp) {
+fn let_(src   : &str,
+        vname : &Variable,
+        e     : &Exp) {
   match e {
     Gadget(g)   => gadget(src, g),
     Call(v)     => call(src, v),
@@ -96,7 +105,8 @@ fn let_(src : &String, vname : &Variable, e : &Exp) {
   verify_ty(src, vname, e)
 }
 
-pub fn typechecker(src : &String, ast : &[AST]) {
+pub fn typechecker(src : &str,
+                   ast : &[AST]) {
   ast.iter().enumerate().for_each(|(_i, x)| {
     match x {
       Stat(Gadget(g)) => gadget(src, g),

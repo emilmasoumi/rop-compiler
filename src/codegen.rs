@@ -10,6 +10,7 @@ use object::{Object, ObjectSection, Endianness};
 use ast::{Pos};
 use ast::*;
 
+#[inline(always)]
 fn read_bytes(bin : &str) -> Vec<u8> {
   match std::fs::read(bin) {
     Ok(bytes) => { bytes }
@@ -20,6 +21,11 @@ fn read_bytes(bin : &str) -> Vec<u8> {
 fn pp_pos(pos : &Pos) -> String {
   let (l, c) = match pos { Pos(x, y) => (x, y) };
   string!(l) + ":" + &string!(c)
+}
+
+#[inline(always)]
+fn hexafy<T: std::fmt::LowerHex>(x : T) -> String {
+ format!("{:x}", x)
 }
 
 fn kmp_table(needle : &[u8]) -> Vec<usize> {
@@ -72,7 +78,7 @@ fn assemble(engine : &Keystone,
             pos    : &Pos) -> Vec<u8> {
   engine
     .asm(own!(code), 0)
-    .unwrap_or_else(|_| error!(format!("Failed assembling:\n{} | {} ", pp_pos(pos), code)))
+    .unwrap_or_else(|e| error!(format!("Failed assembling: {}\n{} | {}", e, pp_pos(pos), code)))
     .bytes
 }
 
@@ -81,51 +87,48 @@ fn cs(archcpu : (Arch, Mode), syntax : arch::x86::ArchSyntax) -> Capstone {
   // `Arch` values must be supplied in comparisons as the `Mode` values overlap.
   match archcpu {
     (Arch::ARM, Mode::ARM) => {
-      Capstone::new().arm().mode(arch::arm::ArchMode::Arm).detail(true).build()
-                     .expect(&err_msg)
+      Capstone::new().arm().mode(arch::arm::ArchMode::Arm)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::ARM, Mode::THUMB) => {
-      Capstone::new().arm().mode(arch::arm::ArchMode::Thumb).detail(true).build()
-                     .expect(&err_msg)
+      Capstone::new().arm().mode(arch::arm::ArchMode::Thumb)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::MIPS, Mode::MIPS3) => {
-      Capstone::new().mips().mode(arch::mips::ArchMode::Mips3).detail(true).build()
-                     .expect(&err_msg)
+      Capstone::new().mips().mode(arch::mips::ArchMode::Mips3)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::MIPS, Mode::MIPS32R6) => {
-      Capstone::new().mips().mode(arch::mips::ArchMode::Mips32R6).detail(true).build()
-                     .expect(&err_msg)
+      Capstone::new().mips().mode(arch::mips::ArchMode::Mips32R6)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::MIPS, Mode::MIPS32) => {
-      Capstone::new().mips().mode(arch::mips::ArchMode::Mips32).detail(true).build()
-                     .expect(&err_msg)
+      Capstone::new().mips().mode(arch::mips::ArchMode::Mips32)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::MIPS, Mode::MIPS64) => {
-      Capstone::new().mips().mode(arch::mips::ArchMode::Mips64).detail(true).build()
-                     .expect(&err_msg)
+      Capstone::new().mips().mode(arch::mips::ArchMode::Mips64)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::SPARC, Mode::SPARC32 | Mode::SPARC64) => {
-      Capstone::new().sparc().mode(arch::sparc::ArchMode::Default).detail(true).build()
-                     .expect(&err_msg)
+      Capstone::new().sparc().mode(arch::sparc::ArchMode::Default)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::SPARC, Mode::V9) => {
-      Capstone::new().sparc().mode(arch::sparc::ArchMode::V9).detail(true).build()
-                     .expect(&err_msg)
+      Capstone::new().sparc().mode(arch::sparc::ArchMode::V9)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::X86, Mode::MODE_16) => {
       Capstone::new().x86().mode(arch::x86::ArchMode::Mode16).syntax(syntax)
-                     .detail(true).build()
-                     .expect(&err_msg)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::X86, Mode::MODE_32) => {
       Capstone::new().x86().mode(arch::x86::ArchMode::Mode32).syntax(syntax)
-                     .detail(true).build()
-                     .expect(&err_msg)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::X86, Mode::MODE_64) => {
       Capstone::new().x86().mode(arch::x86::ArchMode::Mode64).syntax(syntax)
-                     .detail(true).build()
-                     .expect(&err_msg)
+                     .detail(true).build().expect(&err_msg)
     }
     (Arch::ARM, Mode::V8) | (Arch::MIPS, Mode::MICRO) => {
       /*
@@ -145,8 +148,10 @@ fn get_opcodes_addr_offs(obj : object::File<'_>) -> (&[u8], u64) {
   let sections = [".text", "__text"];
   for s in sections {
     if let Some(section) = obj.section_by_name(s) {
-      if let Ok(opcodes) = section.data() { return (opcodes, section.address()) }
-      else { error!("Failed to get the opcodes for the ", s, " section.") }
+      match section.data() {
+        Ok(opcodes) => return (opcodes, section.address()),
+        Err(e)      => error!("Failed to get the opcodes for the ", s, " section: ", e),
+      }
     }
   }
   error!("Failed to find an executable section.")
@@ -156,7 +161,7 @@ fn get_opcodes_addr_offs(obj : object::File<'_>) -> (&[u8], u64) {
 fn no_gadget_err(gadget : &[Const]) -> ! {
   let mut g = gadget.iter().map(|e|
     match e {
-      Asm(asm, _, _) => asm.to_owned() + "\n",
+      Asm(asm, _, _) => own!(asm) + "\n",
     }
   ).collect::<String>();
   g.pop();
@@ -165,14 +170,14 @@ fn no_gadget_err(gadget : &[Const]) -> ! {
 
 fn mnemonicwise_search(gadget : &[Const],
                        insns  : &Instructions<'_>,
-                       engine : &Keystone) -> String {
+                       engine : &Keystone) -> u64 {
   for g in gadget {
     match g {
       Asm(asm, pos, _) => {
         let obj_code = assemble(engine, own!(asm), pos);
         for ins in insns.as_ref() {
           if obj_code.iter().eq(ins.bytes().iter()) {
-            return string!(ins.address())
+            return ins.address()
           }
         }
       },
@@ -184,13 +189,13 @@ fn mnemonicwise_search(gadget : &[Const],
 fn bytewise_search(gadget    : &[Const],
                    opcodes   : &[u8],
                    engine    : &Keystone,
-                   addr_offs : u64) -> String {
+                   addr_offs : u64) -> u64 {
   for g in gadget {
     match g {
       Asm(asm, pos, _) => {
         let obj_code = assemble(engine, own!(asm), pos);
         if let Some(gadget_offs) = kmp(opcodes, &obj_code) {
-          return string!(addr_offs + gadget_offs as u64)
+          return addr_offs + gadget_offs as u64
         }
       },
     }
@@ -205,12 +210,12 @@ fn eval_gadget(opcodes     : &[u8],
                addr_offset : u64,
                bytewise    : bool,
                outind      : bool) -> String {
-  let addr = if bytewise {
+  let addr = hexafy(if bytewise {
     bytewise_search(gadget, opcodes, engine, addr_offset)
   }
   else {
     mnemonicwise_search(gadget, insns, engine)
-  };
+  });
   if outind { addr + "\n" }
   else      { addr        }
 }
@@ -224,7 +229,7 @@ pub fn codegen(ast      : &[AST],
   let data = read_bytes(&bin);
 
   let engine = Keystone::new(archcpu.0, archcpu.1)
-                        .expect("Failed initializing the Keystone engine");
+                        .expect("Failed initializing the Keystone engine.");
 
   if archcpu.0 == Arch::X86 {
     engine.option(OptionType::SYNTAX, syntax.0)
@@ -238,17 +243,17 @@ pub fn codegen(ast      : &[AST],
 
   let endianess = obj.endianness();
   if endianess == Endianness::Big {
-    error!("big-endian architectures are not yet supported.");
+    error!("Big-endian architectures are not yet supported.");
   }
 
   let (opcodes, addr_offset) = get_opcodes_addr_offs(obj);
 
   let cs        = cs(archcpu, syntax.1);
   let mut insns = cs.disasm_all(&[], addr_offset)
-                    .expect("Failed to disassemble");
+                    .expect("Failed disassembling.");
   if !bytewise {
     insns = cs.disasm_all(opcodes, addr_offset)
-              .expect("Failed to disassemble");
+              .expect("Failed disassembling.");
   }
 
   ast.iter().map(|n| {

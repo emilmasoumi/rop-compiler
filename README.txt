@@ -127,7 +127,7 @@ Example:
 // Assume x64 architecture and an executable binary that was compiled with:
 // `gcc main.c -o main`.
 // A ROP/JOP program can then be compiled with:
-// ./ropc src.rop main -c x86-64 -s att
+// ./ropc src.rop main -c x86-64 -s intel
 
 r    = "ret";
 regs = ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",

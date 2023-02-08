@@ -35,7 +35,7 @@ options:
     {-h --help}:
       Print this usage message.
     {-o --individually}:
-      Output the addresses in the gadget chain individually.
+      Display the gadget and the addresses in the gadget chain individually.
     {-s --select} <syntax>:
       The assembly syntax for dis/assembling. <possible values: att, gas,
       intel, nasm>

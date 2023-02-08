@@ -22,5 +22,5 @@ fn main() {
 
   if outind { payload.pop(); }
 
-  println!("{}", payload);
+  println!("{payload}");
 }

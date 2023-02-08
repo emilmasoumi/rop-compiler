@@ -34,7 +34,7 @@ options:
       Search for memory addresses byte-wise instead of mnemonic-wise.
     {-h --help}:
       Print this usage message.
-    {-o --individually}:
+    {-i --individually}:
       Display the gadget and the addresses in the gadget chain individually.
     {-s --select} <syntax>:
       The assembly syntax for dis/assembling. <possible values: att, gas,

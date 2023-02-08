@@ -13,8 +13,8 @@ use ast::*;
 #[inline(always)]
 fn read_bytes(bin : &str) -> Vec<u8> {
   match std::fs::read(bin) {
-    Ok(bytes) => { bytes }
-    Err(e)    => { error!("failed reading from: \'", bin, "\': ", e) }
+    Ok(bytes) => bytes,
+    Err(e)    => error!("failed reading from: \'", bin, "\': ", e),
   }
 }
 
@@ -24,8 +24,21 @@ fn pp_pos(pos : &Pos) -> String {
 }
 
 #[inline(always)]
-fn hexafy<T: std::fmt::LowerHex>(x : T) -> String {
+fn hexafy<T : std::fmt::LowerHex>(x : T) -> String {
  format!("{:x}", x)
+}
+
+#[inline(always)]
+fn get_gadget(gadget : Const) -> String {
+  match gadget {
+    Asm(s, _, _) => s
+  }
+}
+
+#[inline(always)]
+fn pp_gadget_addr(addr   : u64,
+                  gadget : Const) -> String {
+  get_gadget(gadget) + "\n" + &hexafy(addr) + "\n"
 }
 
 fn kmp_table(needle : &[u8]) -> Vec<usize> {
@@ -57,7 +70,7 @@ fn kmp(haystack : &[u8],
         return Some(i-j);
         //idxs.insert(idx, i-j);
         //idx += 1;
-        //j = table[j];
+        //j = table[j-1];
       }
     }
     else {
@@ -73,6 +86,7 @@ fn kmp(haystack : &[u8],
   //idxs
 }
 
+#[inline(always)]
 fn assemble(engine : &Keystone,
             code   : String,
             pos    : &Pos) -> Vec<u8> {
@@ -161,7 +175,7 @@ fn get_opcodes_addr_offs(obj : object::File<'_>) -> (&[u8], u64) {
 fn no_gadget_err(gadget : &[Const]) -> ! {
   let mut g = gadget.iter().map(|e|
     match e {
-      Asm(asm, _, _) => own!(asm) + "\n",
+      Asm(asm, _, _) => own!(asm) + "\n"
     }
   ).collect::<String>();
   g.pop();
@@ -170,14 +184,15 @@ fn no_gadget_err(gadget : &[Const]) -> ! {
 
 fn mnemonicwise_search(gadget : &[Const],
                        insns  : &Instructions<'_>,
-                       engine : &Keystone) -> u64 {
+                       engine : &Keystone) -> (u64,
+                                               Const) {
   for g in gadget {
     match g {
       Asm(asm, pos, _) => {
         let obj_code = assemble(engine, own!(asm), pos);
         for ins in insns.as_ref() {
           if obj_code.iter().eq(ins.bytes().iter()) {
-            return ins.address()
+            return (ins.address(), own!(g))
           }
         }
       },
@@ -189,13 +204,14 @@ fn mnemonicwise_search(gadget : &[Const],
 fn bytewise_search(gadget    : &[Const],
                    opcodes   : &[u8],
                    engine    : &Keystone,
-                   addr_offs : u64) -> u64 {
+                   addr_offs : u64) -> (u64,
+                                        Const) {
   for g in gadget {
     match g {
       Asm(asm, pos, _) => {
         let obj_code = assemble(engine, own!(asm), pos);
         if let Some(gadget_offs) = kmp(opcodes, &obj_code) {
-          return addr_offs + gadget_offs as u64
+          return (addr_offs + gadget_offs as u64, own!(g))
         }
       },
     }
@@ -210,14 +226,14 @@ fn eval_gadget(opcodes     : &[u8],
                addr_offset : u64,
                bytewise    : bool,
                outind      : bool) -> String {
-  let addr = hexafy(if bytewise {
+  let (addr, g) = if bytewise {
     bytewise_search(gadget, opcodes, engine, addr_offset)
   }
   else {
     mnemonicwise_search(gadget, insns, engine)
-  });
-  if outind { addr + "\n" }
-  else      { addr        }
+  };
+  if outind { pp_gadget_addr(addr, g) }
+  else      { hexafy(addr)            }
 }
 
 pub fn codegen(ast      : &[AST],
@@ -237,8 +253,8 @@ pub fn codegen(ast      : &[AST],
   }
 
   let obj = match object::File::parse(&*data) {
-    Ok(obj) => { obj }
-    Err(e)  => { error!(format!("Failed to parse {} into object code: {}", bin, e)) }
+    Ok(obj) => obj,
+    Err(e)  => error!(format!("Failed to parse {} into object code: {}", bin, e)),
   };
 
   let endianess = obj.endianness();

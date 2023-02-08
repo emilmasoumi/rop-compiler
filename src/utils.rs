@@ -143,7 +143,7 @@ pub fn parse_cmd_args() -> (String,
            .help("Search for memory addresses byte-wise instead of mnemonic-wise.")
           )
       .arg(Arg::with_name("out-ind")
-           .short('o')
+           .short('i')
            .long("individually")
            .takes_value(false)
            .help("Output the addresses in the gadget chain individually.")

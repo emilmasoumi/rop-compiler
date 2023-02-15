@@ -22,23 +22,30 @@ Usage:
 ./ropc <src-code> <binary> <cpu-type> [options]
 arguments:
     <src-code>:
-      Source code file.
+      The source code file.
     <binary>:
-      Binary executable file.
+      The binary executable file.
     <-c --cputype> <cpu-type>:
-      Computer architecture/CPU type. <possible values: arm, thumb, armv8,
-      micro, mips3, mips32r6, mips32, mips64, sparc32, sparcv9, x86-16, x86-32,
-      x86-64>
+      The computer architecture/CPU type of the binary executable file.
+      <possible values: arm, thumb, armv8, micro, mips3, mips32r6, mips32,
+                        mips64, sparc32, sparcv9, x86-16, x86-32, x86-64>
 options:
     {-b --bytewise}:
       Search for memory addresses byte-wise instead of mnemonic-wise.
     {-h --help}:
       Print this usage message.
+    {-e --byteorder}:
+      Adjust the byte order of the addresses in the gadget to adapt the
+      endianness of the architecture.
     {-i --individually}:
       Display the gadget and the addresses in the gadget chain individually.
     {-s --select} <syntax>:
       The assembly syntax for dis/assembling. <possible values: att, gas,
       intel, nasm>
+    <-w --bitwidth> <bit-width>:
+      Extend the addresses in the gadgets to the computer architecture bit
+      width of the binary.
+      <possible values: 16, 32, 64>
 
 ------------
 Syntax and semantics:

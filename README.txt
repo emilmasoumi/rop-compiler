@@ -35,7 +35,7 @@ options:
     {-h --help}:
       Print this usage message.
     {-e --byteorder}:
-      Adjust the byte order of the addresses in the gadget to adapt the
+      Adjust the byte order of the addresses in the gadgets to adapt to the
       endianness of the architecture.
     {-i --individually}:
       Display the gadget and the addresses in the gadget chain individually.

@@ -20,14 +20,16 @@ pub enum BitWidth {
 }
 
 #[inline(always)]
-fn pack_bits(mut addr : String, num_hexs : usize) -> String {
+fn pack_bits(mut addr     : String,
+                 num_hexs : usize) -> String {
   while addr.len() != num_hexs {
     addr.push('0');
   }
   addr
 }
 
-fn pack(addr : String, bitwidth : BitWidth) -> String {
+fn pack(addr     : String,
+        bitwidth : BitWidth) -> String {
   match bitwidth {
     BitComputing16   => pack_bits(addr, 4),
     BitComputing32   => pack_bits(addr, 8),

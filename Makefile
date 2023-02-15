@@ -11,5 +11,5 @@ release: $(SRC)/* Cargo.toml
   cp target/debug/ropc .
 
 clean:
-	rm Cargo.lock ropc
+	rm -f Cargo.lock ropc
 	rm -rf target

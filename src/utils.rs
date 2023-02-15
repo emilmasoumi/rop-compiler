@@ -1,4 +1,5 @@
 use ast::{Pos};
+use codegen::{BitWidth};
 
 use clap::{Arg, App};
 use capstone::prelude::arch::*;
@@ -9,6 +10,7 @@ use std::fs::File;
 use std::fmt::Debug;
 
 use self::Pos::*;
+use self::BitWidth::*;
 
 macro_rules! error {
   ($($args:expr),*) => {{
@@ -100,10 +102,12 @@ pub fn parse_cmd_args() -> (String,
                             String,
                             (Arch, Mode),
                             (OptionValue, x86::ArchSyntax),
+                            BitWidth,
+                            bool,
                             bool,
                             bool) {
   let matches =
-      App::new("ROP and JOP compiler")
+    App::new("ROP and JOP compiler")
       .version("0.0.1")
       .about("A generic gadget chain compiler that supports the \
               architectures: ARM/ARM64, MIPS32/64, SPARC32/64, x86/x64, and \
@@ -123,7 +127,7 @@ pub fn parse_cmd_args() -> (String,
                               "mips32r6", "mips32", "mips64",
                               "sparc32", "sparc64", "sparcv9",
                               "x86-16", "x86-32", "x86-64"])
-           .help("Computer architecture/CPU type.")
+           .help("The computer architecture/CPU type of the binary executable file.")
           )
       /* options: */
       .arg(Arg::with_name("assembly-syntax")
@@ -142,11 +146,26 @@ pub fn parse_cmd_args() -> (String,
            .takes_value(false)
            .help("Search for memory addresses byte-wise instead of mnemonic-wise.")
           )
+      .arg(Arg::with_name("endianness")
+           .short('e')
+           .long("byteorder")
+           .takes_value(false)
+           .help("Adjust the byte order of the addresses in the gadgets to \
+                  adapt to the endianness of the architecture.")
+          )
       .arg(Arg::with_name("out-ind")
            .short('i')
            .long("individually")
            .takes_value(false)
            .help("Output the addresses in the gadget chain individually.")
+          )
+      .arg(Arg::with_name("bit-width")
+           .short('w')
+           .long("bitwidth")
+           .takes_value(true)
+           .possible_values(&["16", "32", "64"])
+           .help("Extend the addresses in the gadgets to the computer \
+                  architecture bit width of the binary.")
           )
       .get_matches();
 
@@ -169,8 +188,8 @@ pub fn parse_cmd_args() -> (String,
       Some("x86-16")   => (Arch::X86,   Mode::MODE_16),
       Some("x86-32")   => (Arch::X86,   Mode::MODE_32),
       Some("x86-64")   => (Arch::X86,   Mode::MODE_64),
-      _                => u_e!("The computer architecture/\
-                                CPU type was not specified."),
+      x                => u_e!("Incorrect computer architecture/CPU type \
+                                specified: ", format!("{:?}", x)),
     };
 
   let syntax =
@@ -182,10 +201,20 @@ pub fn parse_cmd_args() -> (String,
       _             => (OptionValue::SYNTAX_INTEL, x86::ArchSyntax::Intel),
     };
 
-  let bytewise = matches.is_present("byte-wise");
-  let outind   = matches.is_present("out-ind");
+  let bitwidth =
+    match matches.value_of("bit-width") {
+      Some("16") => BitComputing16,
+      Some("32") => BitComputing32,
+      Some("64") => BitComputing64,
+      None       => BitComputingNone,
+      x          => u_e!("Incorrect bit-width specified: ", format!("{:?}", x)),
+    };
+
+  let bytewise  = matches.is_present("byte-wise");
+  let byteorder = matches.is_present("endianness");
+  let outind    = matches.is_present("out-ind");
 
   let (src, bin) = get_src_bin(files);
 
-  (src, bin, cputype, syntax, bytewise, outind)
+  (src, bin, cputype, syntax, bitwidth, bytewise, byteorder, outind)
 }

@@ -2,6 +2,7 @@ use self::Pos::*;
 use self::Exp::*;
 use self::AST::*;
 use self::Const::*;
+use self::BitWidth::*;
 
 use capstone::{prelude::*, Instructions};
 use keystone_engine::*;
@@ -9,6 +10,31 @@ use object::{Object, ObjectSection, Endianness};
 
 use ast::{Pos};
 use ast::*;
+
+#[derive(Clone, Debug, Copy, PartialEq)]
+pub enum BitWidth {
+  BitComputing16,
+  BitComputing32,
+  BitComputing64,
+  BitComputingNone,
+}
+
+#[inline(always)]
+fn pack_bits(mut addr : String, num_hexs : usize) -> String {
+  while addr.len() != num_hexs {
+    addr.push('0');
+  }
+  addr
+}
+
+fn pack(addr : String, bitwidth : BitWidth) -> String {
+  match bitwidth {
+    BitComputing16   => pack_bits(addr, 4),
+    BitComputing32   => pack_bits(addr, 8),
+    BitComputing64   => pack_bits(addr, 16),
+    BitComputingNone => addr,
+  }
+}
 
 #[inline(always)]
 fn read_bytes(bin : &str) -> Vec<u8> {
@@ -33,12 +59,6 @@ fn get_gadget(gadget : Const) -> String {
   match gadget {
     Asm(s, _, _) => s
   }
-}
-
-#[inline(always)]
-fn pp_gadget_addr(addr   : u64,
-                  gadget : Const) -> String {
-  get_gadget(gadget) + "\n" + &hexafy(addr) + "\n"
 }
 
 fn kmp_table(needle : &[u8]) -> Vec<usize> {
@@ -84,6 +104,36 @@ fn kmp(haystack : &[u8],
 
   None
   //idxs
+}
+
+fn align_byteorder(addr      : String,
+                   byteorder : bool) -> String {
+  if byteorder {
+    return addr.chars()
+               .collect::<Vec<char>>()
+               .chunks(2)
+               .map(|x| x.iter().collect::<String>())
+               .rev()
+               .collect::<String>();
+  }
+  addr
+}
+
+#[inline(always)]
+fn subst_gadget(addr      : u64,
+                gadget    : Const,
+                bitwidth  : BitWidth,
+                byteorder : bool,
+                outind    : bool) -> String {
+  if outind {
+    get_gadget(gadget)
+      + "\n"
+      + &pack(align_byteorder(hexafy(addr), byteorder), bitwidth)
+      + "\n"
+  }
+  else {
+    pack(align_byteorder(hexafy(addr), byteorder), bitwidth)
+  }
 }
 
 #[inline(always)]
@@ -224,7 +274,9 @@ fn eval_gadget(opcodes     : &[u8],
                insns       : &Instructions<'_>,
                engine      : &Keystone,
                addr_offset : u64,
+               bitwidth    : BitWidth,
                bytewise    : bool,
+               byteorder   : bool,
                outind      : bool) -> String {
   let (addr, g) = if bytewise {
     bytewise_search(gadget, opcodes, engine, addr_offset)
@@ -232,16 +284,17 @@ fn eval_gadget(opcodes     : &[u8],
   else {
     mnemonicwise_search(gadget, insns, engine)
   };
-  if outind { pp_gadget_addr(addr, g) }
-  else      { hexafy(addr)            }
+  subst_gadget(addr, g, bitwidth, byteorder, outind)
 }
 
-pub fn codegen(ast      : &[AST],
-               bin      : String,
-               archcpu  : (Arch, Mode),
-               syntax   : (OptionValue, arch::x86::ArchSyntax),
-               bytewise : bool,
-               outind   : bool) -> String {
+pub fn codegen(ast       : &[AST],
+               bin       : String,
+               archcpu   : (Arch, Mode),
+               syntax    : (OptionValue, arch::x86::ArchSyntax),
+               bitwidth  : BitWidth,
+               bytewise  : bool,
+               byteorder : bool,
+               outind    : bool) -> String {
   let data = read_bytes(&bin);
 
   let engine = Keystone::new(archcpu.0, archcpu.1)
@@ -259,7 +312,7 @@ pub fn codegen(ast      : &[AST],
 
   let endianess = obj.endianness();
   if endianess == Endianness::Big {
-    error!("Big-endian architectures are not yet supported.");
+    error!("Big-endian architectures are not yet supported (Keystone).");
   }
 
   let (opcodes, addr_offset) = get_opcodes_addr_offs(obj);
@@ -272,9 +325,12 @@ pub fn codegen(ast      : &[AST],
               .expect("Failed disassembling.");
   }
 
+  let byteorder = byteorder & (endianess == Endianness::Little);
+
   ast.iter().map(|n| {
     match n {
-      Stat(Gadget(g)) => eval_gadget(opcodes, g, &insns, &engine, addr_offset, bytewise, outind),
+      Stat(Gadget(g)) => eval_gadget(opcodes, g, &insns, &engine, addr_offset,
+                                     bitwidth, bytewise, byteorder, outind),
       _ => string!("")
     }
   }).collect()

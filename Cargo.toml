@@ -11,7 +11,7 @@ path = "src/main.rs"
 capstone = "0.11.0"
 clap = "3.2.23"
 keystone-engine = { version = "0.1.0", features = ["build-from-src"] }
-object = "0.30.1"
+object = "0.32.0"
 
 [profile.release]
 # Link time optimization

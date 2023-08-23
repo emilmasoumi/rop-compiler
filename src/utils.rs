@@ -105,6 +105,7 @@ pub fn parse_cmd_args() -> (String,
                             BitWidth,
                             bool,
                             bool,
+                            bool,
                             bool) {
   let matches =
     App::new("ROP and JOP compiler")
@@ -157,7 +158,13 @@ pub fn parse_cmd_args() -> (String,
            .short('i')
            .long("individually")
            .takes_value(false)
-           .help("Output the addresses in the gadget chain individually.")
+           .help("Display the addresses in the gadget chain individually.")
+          )
+      .arg(Arg::with_name("list")
+           .short('l')
+           .long("list")
+           .takes_value(false)
+           .help("Display every address present in the binary for all gadgets.")
           )
       .arg(Arg::with_name("bit-width")
            .short('w')
@@ -213,8 +220,9 @@ pub fn parse_cmd_args() -> (String,
   let bytewise  = matches.is_present("byte-wise");
   let byteorder = matches.is_present("endianness");
   let outind    = matches.is_present("out-ind");
+  let all       = matches.is_present("list");
 
   let (src, bin) = get_src_bin(files);
 
-  (src, bin, cputype, syntax, bitwidth, bytewise, byteorder, outind)
+  (src, bin, cputype, syntax, bitwidth, bytewise, byteorder, outind, all)
 }

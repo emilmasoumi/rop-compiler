@@ -11,6 +11,14 @@ use object::{Object, ObjectSection, Endianness};
 use ast::{Pos};
 use ast::*;
 
+macro_rules! c_e {
+  ($src:ident, $id:expr, $pos:ident, $($args:tt)*) => {
+    error!["code generation: ", $($args)*, "\n", highlight($src, &$id, *$pos)]
+  };
+}
+
+macro_rules! i_e { ($($args:tt)*) => { error!["codegen internal: ", $($args)*] }; }
+
 #[derive(Clone, Debug, Copy, PartialEq)]
 pub enum BitWidth {
   BitComputing16,
@@ -79,10 +87,36 @@ fn kmp_table(needle : &[u8]) -> Vec<usize> {
   table
 }
 
+fn kmp_all(haystack : &[u8],
+           needle   : &[u8]) -> Vec<usize> {
+  let (mut i, mut j, mut idx, mut idxs, table) =
+    (0, 0, 0, Vec::new(), kmp_table(needle));
+
+  while i < haystack.len() {
+    if needle[j] == haystack[i] {
+      i += 1;
+      j += 1;
+      if j == needle.len() {
+        idxs.insert(idx, i-j);
+        idx += 1;
+        j = table[j-1];
+      }
+    }
+    else {
+      j = table[j];
+      if j == 0 {
+        i += 1;
+        j += 1;
+      }
+    }
+  }
+
+  idxs
+}
+
 fn kmp(haystack : &[u8],
        needle   : &[u8]) -> Option<usize> {
   let (mut i, mut j, mut _idx, table) = (0, 0, 0, kmp_table(needle));
-  //let mut idxs = Vec::new();
 
   while i < haystack.len() {
     if needle[j] == haystack[i] {
@@ -90,9 +124,6 @@ fn kmp(haystack : &[u8],
       j += 1;
       if j == needle.len() {
         return Some(i-j);
-        //idxs.insert(idx, i-j);
-        //idx += 1;
-        //j = table[j-1];
       }
     }
     else {
@@ -105,7 +136,6 @@ fn kmp(haystack : &[u8],
   }
 
   None
-  //idxs
 }
 
 fn align_byteorder(addr      : String,
@@ -136,6 +166,16 @@ fn subst_gadget(addr      : u64,
   else {
     pack(align_byteorder(hexafy(addr), byteorder), bitwidth)
   }
+}
+
+#[inline(always)]
+fn subst_gadgets(addrs     : &[u64],
+                 gadget    : Const,
+                 bitwidth  : BitWidth,
+                 byteorder : bool) -> String {
+  get_gadget(gadget) + "\n" + &addrs.iter().map(|addr|
+    pack(align_byteorder(hexafy(addr), byteorder), bitwidth) + "\n"
+  ).collect::<String>()
 }
 
 #[inline(always)]
@@ -204,7 +244,7 @@ fn cs(archcpu : (Arch, Mode), syntax : arch::x86::ArchSyntax) -> Capstone {
       error!("The CPU modes: V8 and Micro are not yet supported.")
     }
     a => {
-      error!("Unknown CPU type given: ", format!("{:?}", a))
+      error!("Unknown CPU type given: ", pp!(a))
     }
   }
 }
@@ -234,10 +274,51 @@ fn no_gadget_err(gadget : &[Const]) -> ! {
   error!("Failed to find a memory address for the gadget(s):\n", g);
 }
 
+fn mnemonicwise_search_all(gadget : &[Const],
+                           insns  : &Instructions<'_>,
+                           engine : &Keystone) -> (Vec<u64>, Const) {
+  let mut addrs = Vec::new();
+  for g in gadget {
+    match g {
+      Asm(asm, pos, _) => {
+        let obj_code = assemble(engine, own!(asm), pos);
+        for ins in insns.as_ref() {
+          if obj_code.iter().eq(ins.bytes().iter()) {
+            addrs.push(ins.address());
+          }
+        }
+      },
+    }
+    if !addrs.is_empty() {
+      return (addrs, own!(g));
+    }
+  }
+  no_gadget_err(gadget)
+}
+
+fn bytewise_search_all(gadget    : &[Const],
+                       opcodes   : &[u8],
+                       engine    : &Keystone,
+                       addr_offs : u64) -> (Vec<u64>, Const) {
+  for g in gadget {
+    match g {
+      Asm(asm, pos, _) => {
+        let obj_code = assemble(engine, own!(asm), pos);
+        let g_offs   = kmp_all(opcodes, &obj_code);
+        if !g_offs.is_empty() {
+          return (g_offs.iter()
+                        .map(|&g_off|addr_offs + g_off as u64)
+                        .collect(), own!(g))
+        }
+      },
+    }
+  }
+  no_gadget_err(gadget)
+}
+
 fn mnemonicwise_search(gadget : &[Const],
                        insns  : &Instructions<'_>,
-                       engine : &Keystone) -> (u64,
-                                               Const) {
+                       engine : &Keystone) -> (u64, Const) {
   for g in gadget {
     match g {
       Asm(asm, pos, _) => {
@@ -256,8 +337,7 @@ fn mnemonicwise_search(gadget : &[Const],
 fn bytewise_search(gadget    : &[Const],
                    opcodes   : &[u8],
                    engine    : &Keystone,
-                   addr_offs : u64) -> (u64,
-                                        Const) {
+                   addr_offs : u64) -> (u64, Const) {
   for g in gadget {
     match g {
       Asm(asm, pos, _) => {
@@ -279,14 +359,24 @@ fn eval_gadget(opcodes     : &[u8],
                bitwidth    : BitWidth,
                bytewise    : bool,
                byteorder   : bool,
-               outind      : bool) -> String {
-  let (addr, g) = if bytewise {
-    bytewise_search(gadget, opcodes, engine, addr_offset)
+               outind      : bool,
+               all         : bool) -> String {
+  match all {
+    true => {
+      let (addrs, g) = match bytewise {
+        true  => bytewise_search_all(gadget, opcodes, engine, addr_offset),
+        false => mnemonicwise_search_all(gadget, insns, engine),
+      };
+      subst_gadgets(&addrs, g, bitwidth, byteorder)
+    },
+    false => {
+      let (addr, g) = match bytewise {
+        true  => bytewise_search(gadget, opcodes, engine, addr_offset),
+        false => mnemonicwise_search(gadget, insns, engine),
+      };
+      subst_gadget(addr, g, bitwidth, byteorder, outind)
+    }
   }
-  else {
-    mnemonicwise_search(gadget, insns, engine)
-  };
-  subst_gadget(addr, g, bitwidth, byteorder, outind)
 }
 
 pub fn codegen(ast       : &[AST],
@@ -296,7 +386,8 @@ pub fn codegen(ast       : &[AST],
                bitwidth  : BitWidth,
                bytewise  : bool,
                byteorder : bool,
-               outind    : bool) -> String {
+               outind    : bool,
+               all       : bool) -> String {
   let data = read_bytes(&bin);
 
   let engine = Keystone::new(archcpu.0, archcpu.1)
@@ -332,7 +423,7 @@ pub fn codegen(ast       : &[AST],
   ast.iter().map(|n| {
     match n {
       Stat(Gadget(g)) => eval_gadget(opcodes, g, &insns, &engine, addr_offset,
-                                     bitwidth, bytewise, byteorder, outind),
+                                     bitwidth, bytewise, byteorder, outind, all),
       _ => string!("")
     }
   }).collect()

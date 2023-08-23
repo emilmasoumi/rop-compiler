@@ -1,6 +1,6 @@
 A return-oriented programming (ROP) compiler that compiles a domain-specific
 programming language to a return-oriented program. Such program is an exploit
-payload based on stack buffer overflows on binary executables consisting of
+payload based on stack buffer overflows in binary executables consisting of
 gadgets that can be chained together. The compiler is more specifically a
 gadget chain compiler, as it can generically be applied to interchangeably
 compile any instruction(s)-oriented program such as jump-oriented programs (JOP)
@@ -39,6 +39,8 @@ options:
       endianness of the architecture.
     {-i --individually}:
       Display the gadget and the addresses in the gadget chain individually.
+    {-l --list}:
+      Display every address present in the binary for all gadgets.
     {-s --select} <syntax>:
       The assembly syntax for dis/assembling. <possible values: att, gas,
       intel, nasm>

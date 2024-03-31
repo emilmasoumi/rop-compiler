@@ -1,7 +1,7 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use utils::{highlight};
+use utils::highlight;
 use ast::*;
 use typechecker::get_type;
 
@@ -28,8 +28,7 @@ macro_rules! next_sym { ($t:ident) => {{ align($t); next_sym($t.xs) }} }
 
 macro_rules! p_e {
   ($t:ident, $exp:expr, $($args:tt)*) => {
-    error!["parser: ", $($args)*, "\n",
-           highlight($t.src, &$exp, Pos($t.line, $t.col))]
+    error![$($args)*, "\n", highlight($t.src, &$exp, Pos($t.line, $t.col))]
   };
 }
 
@@ -52,6 +51,14 @@ fn sep(c : char) -> bool {
 #[inline(always)]
 fn sep_str(xs : &str) -> bool {
   some_eq(&[",", ";", "=", "\"", "/", "[", "]", "{", "}", "\0"], &xs) || xs.trim().is_empty()
+}
+
+#[inline(always)]
+fn reserved(xs : &str) -> (char, bool) {
+  let ys = ['-', '+', '/', '*', '>', '<', '=', '|', '&', '!', '%', '(', ')',
+            '{', '}', ',', '.', ':', ';', '#', '@', '?', '\'', '\"'];
+  for y in ys { if xs.contains(y) { return (y, true); } }
+  (' ', false)
 }
 
 #[inline(always)]
@@ -171,11 +178,11 @@ fn asm(t   : &mut Token<'_>,
   else {
     let x = lookup(&xs, ast);
     match x {
-      Some(Stat(Let(Var(id, p, GadgetType), _))) =>
-        arr.push(Asm(string!(id), *p, GadgetType)),
+      Some(Stat(Let(Var(id, _, GadgetType), _))) =>
+        arr.push(Asm(string!(id), pos!(t), GadgetType)),
       Some(Stat(Let(Var(_, _, AsmType), e))) =>
         match &**e {
-          Constant(Asm(s, p, _)) => arr.push(Asm(string!(s), *p, AsmType)),
+          Constant(Asm(s, _, _)) => arr.push(Asm(string!(s), pos!(t), AsmType)),
           y                      => p_e!(t, string!(xs), "unexpected const construct: `",
                                          xs, "` of form: `", pp!(y), "`"),
         },
@@ -242,8 +249,9 @@ fn call(t   : &mut Token<'_>,
         id  : String,
         ast : &mut [AST]) -> Exp {
   match lookup(&id, ast) {
-    Some(Stat(Let(v, _))) => Call(v.clone()),
-    _ => p_e!(t, string!(id), "undefined identifier called: ", id)
+    Some(Stat(Let(Var(_, _, ty), _))) => Call(Var(id, pos!(t), *ty)),
+    _                                 =>
+      p_e!(t, string!(id), "undefined identifier called: ", id)
   }
 }
 
@@ -272,7 +280,7 @@ fn ident(t   : &mut Token<'_>,
   match as_str!(ys) {
     "=" => let_(t, id, ast),
     ";" => call(t, id, ast),
-    _   => p_e!(t, id, "unexpected identifier: `", id, "`"),
+    _   => p_e!(t, ys, "unexpected identifier: `", ys, "`"),
   }
 }
 
@@ -282,9 +290,15 @@ fn exp(t   : &mut Token<'_>,
   match xs {
     "{" => gadget(t, ast),
     ";" => Empty,
-    _   =>
-      if sep_str(xs) { p_e!(t, string!(xs), "unexpected keyword: `", xs, "`") }
-      else           { ident(t, string!(xs), ast) },
+    _   => {
+      let (sym, is_sym) = reserved(xs);
+      if sep_str(xs)
+        { p_e!(t, string!(xs), "unexpected keyword: `", xs, "`") }
+      else if is_sym
+        { p_e!(t, string!(xs),  "the symbol: `", sym, "` in `", xs, "` is reserved") }
+      else
+        { ident(t, string!(xs), ast) }
+    }
   }
 }
 

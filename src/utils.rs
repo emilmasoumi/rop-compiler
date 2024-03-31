@@ -1,5 +1,5 @@
-use ast::{Pos};
-use codegen::{BitWidth};
+use ast::Pos;
+use codegen::BitWidth;
 
 use clap::{Arg, App};
 use capstone::prelude::arch::*;
@@ -14,12 +14,23 @@ use self::BitWidth::*;
 
 macro_rules! error {
   ($($args:expr),*) => {{
-     print!("error: ");
+     print!("\x1B[1;31merror\x1B[0m: ");
      $(
         print!("{}", $args);
      )*
      print!("\n");
      std::process::exit(1);
+  }}
+}
+
+macro_rules! fail {
+  ($($args:expr),*) => {{
+     print!("\x1B[1;33mfailure\x1B[0m: ");
+     $(
+        print!("{}", $args);
+     )*
+     print!("\n");
+     std::process::exit(2);
   }}
 }
 
@@ -45,7 +56,8 @@ pub fn highlight(src : &str,
   println!(" {}:{} | {}", l, c, split[l-1]);
 
   let ws  = 3 + string!(l).len() + string!(c).len();
-  " ".repeat(ws) + "|" + &" ".repeat(c-id.len()) + &"^".repeat(id.len())
+  let off = if id.len() < c {c-id.len()} else {id.len()};
+  " ".repeat(ws) + "|" + &" ".repeat(off) + &"^".repeat(id.len())
 }
 
 pub fn read_file(filename : &String) -> String {
@@ -124,10 +136,10 @@ pub fn parse_cmd_args() -> (String,
            .long("cputype")
            .required(true)
            .takes_value(true)
-           .possible_values(&["arm", "thumb", "armv8", "micro", "mips3",
-                              "mips32r6", "mips32", "mips64",
-                              "sparc32", "sparc64", "sparcv9",
-                              "x86-16", "x86-32", "x86-64"])
+           .possible_values(["arm", "thumb", "armv8",
+                             "micro", "mips3", "mips32r6", "mips32", "mips64",
+                             "sparc32", "sparc64", "sparcv9",
+                             "x86-16", "x86-32", "x86-64"])
            .help("The computer architecture/CPU type of the binary executable file.")
           )
       /* options: */
@@ -138,7 +150,7 @@ pub fn parse_cmd_args() -> (String,
                            ("cpu-type", "x86-32"),
                            ("cpu-type", "x86-64")])
            .takes_value(true)
-           .possible_values(&["att", "gas", "intel", "nasm"])
+           .possible_values(["att", "gas", "intel", "nasm"])
            .help("The assembly syntax for dis/assembling.")
           )
       .arg(Arg::with_name("byte-wise")
@@ -170,7 +182,7 @@ pub fn parse_cmd_args() -> (String,
            .short('w')
            .long("bitwidth")
            .takes_value(true)
-           .possible_values(&["16", "32", "64"])
+           .possible_values(["16", "32", "64"])
            .help("Extend the addresses in the gadgets to the computer \
                   architecture bit width of the binary.")
           )

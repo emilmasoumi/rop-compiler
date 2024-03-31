@@ -4,20 +4,12 @@ use self::AST::*;
 use self::Const::*;
 use self::BitWidth::*;
 
+use ast::Pos;
+use ast::*;
+
 use capstone::{prelude::*, Instructions};
 use keystone_engine::*;
 use object::{Object, ObjectSection, Endianness};
-
-use ast::{Pos};
-use ast::*;
-
-macro_rules! c_e {
-  ($src:ident, $id:expr, $pos:ident, $($args:tt)*) => {
-    error!["code generation: ", $($args)*, "\n", highlight($src, &$id, *$pos)]
-  };
-}
-
-macro_rules! i_e { ($($args:tt)*) => { error!["codegen internal: ", $($args)*] }; }
 
 #[derive(Clone, Debug, Copy, PartialEq)]
 pub enum BitWidth {
@@ -264,14 +256,14 @@ fn get_opcodes_addr_offs(obj : object::File<'_>) -> (&[u8], u64) {
 }
 
 #[inline(always)]
-fn no_gadget_err(gadget : &[Const]) -> ! {
+fn no_gadgets(gadget : &[Const]) -> ! {
   let mut g = gadget.iter().map(|e|
     match e {
       Asm(asm, _, _) => own!(asm) + "\n"
     }
   ).collect::<String>();
   g.pop();
-  error!("Failed to find a memory address for the gadget(s):\n", g);
+  fail!("Could not find a memory address for the gadget(s):\n", g);
 }
 
 fn mnemonicwise_search_all(gadget : &[Const],
@@ -293,7 +285,7 @@ fn mnemonicwise_search_all(gadget : &[Const],
       return (addrs, own!(g));
     }
   }
-  no_gadget_err(gadget)
+  no_gadgets(gadget)
 }
 
 fn bytewise_search_all(gadget    : &[Const],
@@ -313,7 +305,7 @@ fn bytewise_search_all(gadget    : &[Const],
       },
     }
   }
-  no_gadget_err(gadget)
+  no_gadgets(gadget)
 }
 
 fn mnemonicwise_search(gadget : &[Const],
@@ -331,7 +323,7 @@ fn mnemonicwise_search(gadget : &[Const],
       },
     }
   }
-  no_gadget_err(gadget)
+  no_gadgets(gadget)
 }
 
 fn bytewise_search(gadget    : &[Const],
@@ -348,7 +340,7 @@ fn bytewise_search(gadget    : &[Const],
       },
     }
   }
-  no_gadget_err(gadget)
+  no_gadgets(gadget)
 }
 
 fn eval_gadget(opcodes     : &[u8],

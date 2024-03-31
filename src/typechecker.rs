@@ -1,5 +1,5 @@
 use ast::*;
-use utils::{highlight};
+use utils::highlight;
 
 use self::Variable::*;
 use self::Const::*;
@@ -9,11 +9,11 @@ use self::AST::*;
 
 macro_rules! t_e {
   ($src:ident, $id:expr, $pos:ident, $($args:tt)*) => {
-    error!["type: ", $($args)*, "\n", highlight($src, &$id, *$pos)]
+    error![$($args)*, "\n", highlight($src, &$id, *$pos)]
   };
 }
 
-macro_rules! i_e { ($($args:tt)*) => { error!["type: internal: ", $($args)*] }; }
+macro_rules! i_e { ($($args:tt)*) => { error!["internal: ", $($args)*] }; }
 
 fn pp_ty(ty : &Type) -> &str {
   match ty {
@@ -36,23 +36,24 @@ fn pp_exp_ty(e : &Exp) -> &str {
 }
 
 pub fn get_type(id  : &String,
-                ast : &mut [AST]) -> Type {
+                ast : &[AST]) -> Type {
   for x in ast.iter().rev() {
     if let Stat(Let(Var(vname, _, ty), _)) = x { if vname == id { return *ty } }
   }
   VoidType
 }
 
-fn verify_ty(src   : &str,
-             vname : &Variable,
-             e     : &Exp) {
-  match (vname, e) {
+fn verify_ty(src : &str,
+             var : &Variable,
+             e   : &Exp) {
+  match (var, e) {
     (Var(_, _, GadgetType), Gadget(_))   |
     (Var(_, _, GadgetType), Call(_))     |
     (Var(_, _, ArrayType),  Array(_))    |
     (Var(_, _, AsmType),    Constant(_)) => (),
-    (Var(id, pos, ty), _) =>  t_e!(src, id, pos, "type mismatch: `", id,
-                                   "`: expected ", pp_exp_ty(e), ", actual ", pp_ty(ty)),
+    (Var(vname, pos, ty), _)             =>
+      t_e!(src, vname, pos, "type mismatch: `", vname, "`: expected ",
+           pp_exp_ty(e), ", actual ", pp_ty(ty)),
   }
 }
 
@@ -60,15 +61,19 @@ fn const_(src : &str,
           c   : &Const) {
   match c {
     Asm(_, _, AsmType) => (),
-    Asm(asm, pos, ty)  => t_e!(src, asm, pos, asm, ": unexpected ", pp_ty(ty)),
+    Asm(asm, pos, ty)  => t_e!(src, asm, pos, "type mismatch: `", asm,
+                               "`: expected type: `Asm`, actual ", pp_ty(ty)),
   }
 }
 
 fn gadget(src    : &str,
           gadget : &[Const]) {
   for e in gadget {
-    if let Asm(asm, pos, VoidType) = e {
-      t_e!(src, asm, pos, "unresolved type for: ", pp!(asm))
+    match e {
+      Asm(_, _, AsmType) => (),
+      Asm(asm, pos, ty)  =>
+      t_e!(src, asm, pos, "type mismatch: `", asm,
+           "`: expected `Asm|Array` actual ", pp_ty(ty)),
     }
   }
 }
@@ -77,9 +82,10 @@ fn array(src : &str,
          arr : &[Const]) {
   for e in arr {
     match e {
-      Asm(_, _, AsmType)    |
-      Asm(_, _, GadgetType) => (),
-      Asm(id, pos, ty)      => t_e!(src, id, pos, id, ": unexpected ", pp_ty(ty)),
+      Asm(_, _, AsmType) => (),
+      Asm(id, pos, ty)   =>
+        t_e!(src, id, pos, "type mismatch: `", id,
+             "`: expected type: `Asm|Array`, actual ", pp_ty(ty)),
     }
   }
 }
@@ -88,13 +94,15 @@ fn call(src : &str,
         var : &Variable) {
   match var {
     Var(_, _, GadgetType) => (),
-    Var(id, pos, ty)      => t_e!(src, id, pos, id, ": unexpected ", pp_ty(ty)),
+    Var(id, pos, ty)      => t_e!(src, own!(id)+";", pos, "type mismatch: `",
+                                  id, "`: expected type: `Gadget`, actual ",
+                                  pp_ty(ty), ", during call invocation"),
   }
 }
 
-fn let_(src   : &str,
-        vname : &Variable,
-        e     : &Exp) {
+fn let_(src : &str,
+        var : &Variable,
+        e   : &Exp) {
   match e {
     Gadget(g)   => gadget(src, g),
     Call(v)     => call(src, v),
@@ -102,7 +110,7 @@ fn let_(src   : &str,
     Constant(c) => const_(src, c),
     _           => i_e!("unexpected construct: ", pp!(e)),
   };
-  verify_ty(src, vname, e)
+  verify_ty(src, var, e)
 }
 
 pub fn typechecker(src : &str,

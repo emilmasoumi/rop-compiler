@@ -3,8 +3,9 @@ programming language to a return-oriented program. Such program is an exploit
 payload based on stack buffer overflows in binary executables consisting of
 gadgets that can be chained together. The compiler is more specifically a
 gadget chain compiler, as it can generically be applied to interchangeably
-compile any instruction(s)-oriented program such as jump-oriented programs (JOP)
-or both ROP and JOP in the same gadget chain.
+compile any instruction(s)-oriented program such as jump-oriented programs
+(JOP), call-oriented programs (COP) or collectively ROP, JOP and COP in the
+same gadget chain.
 
 The compiler supports the architectures: ARM/ARM64, MIPS32/64, SPARC32/64,
 x86/x64, and the file formats: ELF, PE, Mach-O.
@@ -61,14 +62,14 @@ gadget in the binary:
   "...", "..."
 };
 
-The assembly must be defined inside two string literals "...", for example:
+The assembly must be defined inside of two string literals "...", for example:
 "mov rsi, rax;". The instructions specified inside of string literals must be
 syntactically correct for the respective machine architecture and its
 correctness is ignored by the compiler.
 
 Variables are declared when they are defined: `id = exp`. They must be defined
-once referenced and defined identifiers inside string literals must be
-prepended with `@` to be referenced. References are replaced with their actual
+once referenced and defined identifiers inside of string literals must be
+prepended with `@`, to be referenced. References are replaced with their actual
 value. The following code:
 
 rax = "rsi";
@@ -78,22 +79,24 @@ evaluates to:
 
 { "mov rsi, rsi; ret;" };
 
-This allows inserting the address of a gadget into a proceeding gadget.
+This does not allow inserting the address of a gadget into a proceeding gadget.
 
 Variables are mutable and cannot be explicitly typed. The compiler must
 implement type inference at compile-time, as identifiers are implicitly typed
 by the compiler. The compiler uses static type checking to ensure type safety.
 
 Arrays are data structures that contain a certain amount of elements and cannot
-be nested. Identifiers that are referenced inside an array are replaced with
-their value. Arrays that are referenced inside arrays are replaced with their
-contents and gadgets are replaced with their determined addresses. Arrays can
-be defined as:
+be nested. Identifiers that are referenced inside of an array are replaced with
+their value. Arrays that are referenced inside of arrays or gadgets are
+replaced with its contents. The determined address of a gadget cannot be
+referenced, thus gadgets cannot be referenced inside of gadgets, arrays or
+assembly code as it leads to ambiguity. Arrays can be defined as:
 
 arr = ["add", "sub", "mul", "div"];
 
-Arrays are evaluated to a set of subgadgets when referenced inside gadgets.
-When referencing the above definition of `arr` in a gadget:
+Arrays are evaluated to a set of subgadgets when referenced inside of assembly
+code that reside inside of gadgets. When referencing the above definition of
+`arr` in a gadget:
 
 { "@arr rsp, rsp;" };
 
@@ -103,8 +106,9 @@ it evaluates to the following:
   "add rsp, rsp;", "sub rsp, rsp;", "mul rsp, rsp;", "div rsp, rsp;"
 };
 
-Array expressions cannot be used inside gadgets. Every possible permutation is
-mutated when multiple arrays are encountered in a gadget. The following code:
+Array expressions cannot be used inside of gadgets. Every possible permutation
+is mutated when multiple arrays are encountered in a gadget. The following
+code:
 
 arr1 = ["push", "pop"];
 arr2 = ["add", "sub"];
@@ -135,7 +139,7 @@ Example:
 
 // Assume x64 architecture and an executable binary that was compiled with:
 // `gcc main.c -o main`.
-// A ROP/JOP program can then be compiled with:
+// A ROP/JOP/COP/.. program can then be compiled with:
 // ./ropc src.rop main -c x86-64 -s intel
 
 r    = "ret";

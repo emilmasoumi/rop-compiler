@@ -39,7 +39,7 @@ pub enum AST {
 }
 
 pub fn lookup<'a>(id  : &String,
-                  ast : &'a mut [AST]) -> Option<&'a AST> {
+                  ast : &'a [AST]) -> Option<&'a AST> {
   for x in ast.iter().rev() {
     if let AST::Stat(Exp::Let(Variable::Var(vname, _, _), _)) = x {
       if vname == id { return Some(x) }

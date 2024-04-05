@@ -416,7 +416,7 @@ pub fn codegen(ast       : &[AST],
     match n {
       Stat(Gadget(g)) => eval_gadget(opcodes, g, &insns, &engine, addr_offset,
                                      bitwidth, bytewise, byteorder, outind, all),
-      _ => string!("")
+      _               => string!("")
     }
   }).collect()
 }

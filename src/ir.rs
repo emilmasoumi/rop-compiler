@@ -6,8 +6,6 @@ use self::Exp::*;
 use self::Type::*;
 use self::AST::*;
 
-macro_rules! i_e { ($($args:tt)*) => { error!["internal: ", $($args)*] }; }
-
 macro_rules! seps {
   () => {
     ['-', '+', '/', '*', '>', '<', '=', '|', '&', '!', '%', '(', ')',
@@ -67,12 +65,12 @@ fn refs(asm  : &str,
   (rvals, rnames)
 }
 
-fn perm<T: Clone>(arrays: Vec<Vec<T>>) -> Vec<Vec<T>> {
+fn perm<T : Clone>(arrays : Vec<Vec<T>>) -> Vec<Vec<T>> {
   arrays.iter().fold(vec![vec![]], |acc, arr| {
     acc.iter().flat_map(|a| arr.iter().map(move |x| {
-      let mut new_a = a.clone();
-      new_a.push(x.clone());
-      new_a
+      let mut res = a.clone();
+      res.push(x.clone());
+      res
     })).collect()
   })
 }
@@ -116,7 +114,7 @@ let v = list(gadget, i, ast);
   match &mut ast[i] {
     Stat(Gadget(g))            => *g = v,
     Stat(Let(Var(_, _, _), g)) => *g = box_!(Gadget(v)),
-    x                          => i_e!("error: not a gadget: ", pp!(x)),
+    x                          => i_e!("not a Gadget: ", pp!(x)),
   }
 }
 
@@ -145,7 +143,7 @@ fn const_(c   : &Const,
       match &mut ast[i] {
         Stat(Constant(Asm(a, _, _))) => *a = v,
         Stat(Let(Var(_, _, _), c))   => *c = box_!(Constant(Asm(v, *pos, *ty))),
-        x                            => i_e!("error: not a const: ", pp!(x)),
+        x                            => i_e!("not a Const: ", pp!(x)),
       }
     }
   }
@@ -157,7 +155,7 @@ fn array(arr : &mut [Const],
   let v = list(arr, i, ast);
   match &mut ast[i] {
     Stat(Let(Var(_, _, _), a)) => *a = box_!(Array(v)),
-    x                          => i_e!("error: not an Array: ", pp!(x)),
+    x                          => i_e!("not an Array: ", pp!(x)),
   }
 }
 

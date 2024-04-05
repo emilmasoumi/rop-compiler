@@ -34,7 +34,8 @@ macro_rules! fail {
   }}
 }
 
-macro_rules! u_e { ($($args:tt)*) => { error!("cmd: ", $($args)*) }; }
+macro_rules! i_e { ($($args:tt)*) => { error!["internal: ", $($args)*] }; }
+macro_rules! u_e { ($($args:tt)*) => { error!("cmd: ",      $($args)*) }; }
 
 macro_rules! string        { ($exp:expr) => { $exp.to_string()     }; }
 macro_rules! own           { ($exp:expr) => { $exp.to_owned()      }; }

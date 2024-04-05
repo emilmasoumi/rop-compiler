@@ -13,8 +13,6 @@ macro_rules! t_e {
   };
 }
 
-macro_rules! i_e { ($($args:tt)*) => { error!["internal: ", $($args)*] }; }
-
 fn pp_ty(ty : &Type) -> &str {
   match ty {
     ArrayType  => "type: `Array`",

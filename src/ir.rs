@@ -110,12 +110,12 @@ fn list(list : &mut [Const],
 fn gadget(gadget : &mut [Const],
           i      : usize,
           ast    : &mut [AST]) {
-let v = list(gadget, i, ast);
-  match &mut ast[i] {
-    Stat(Gadget(g))            => *g = v,
-    Stat(Let(Var(_, _, _), g)) => *g = box_!(Gadget(v)),
-    x                          => i_e!("not a Gadget: ", pp!(x)),
-  }
+  let v = list(gadget, i, ast);
+    match &mut ast[i] {
+      Stat(Gadget(g))            => *g = v,
+      Stat(Let(Var(_, _, _), g)) => *g = box_!(Gadget(v)),
+      x                          => i_e!("not a Gadget: ", pp!(x)),
+    }
 }
 
 fn const_(c   : &Const,
